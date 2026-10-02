@@ -10,16 +10,18 @@ Expo ships breaking changes every SDK release. APIs you remember are likely rena
 
 ## Commands
 
-Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
+This project uses **bun** as its package manager (`bun.lock` present). Always use `bun install` and `bunx` — never npm/yarn/pnpm.
 
 ```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
+bunx expo install <package>  # ALWAYS use instead of bun add — resolves SDK-compatible versions
+bunx expo start              # start the dev server (use -c the first time with Tamagui)
+bunx expo lint               # lint
+bunx tsc --noEmit            # typecheck
+bunx expo-doctor             # diagnose dependency and config issues
+bunx expo install --fix      # fix incompatible package versions
 ```
+
+If `bun install` resolves absurdly old package versions (e.g. expo 44 instead of 57), the bun cache packument is corrupt: fix with `bun pm cache rm`, delete `bun.lock`/`node_modules`, and reinstall.
 
 Run lint and typecheck before declaring any task done.
 
