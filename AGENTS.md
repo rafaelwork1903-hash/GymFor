@@ -41,3 +41,13 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Git Workflow
+
+- **1 tarea = 1 rama** = 1 PR: `feat/<descripcion>`, `fix/<descripcion>`, `chore/<descripcion>`
+- Las ramas se crean desde `main`: `git checkout -b feat/nombre main`
+- El usuario asigna las tareas y revisa los PRs siempre
+- **Ningún agente hace merge con main**. Solo el usuario tiene permiso para mergear después de revisar
+- Commits con mensaje conveccional recomendado: `feat:`, `fix:`, `chore:`
+- `main` siempre debe estar estable y probada en dispositivo
+- Después del merge, `bun install` y verificar build expo
