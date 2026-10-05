@@ -1,0 +1,5 @@
+export * from './ejercicio.repository'
+export * from './metrica.repository'
+export * from './rutina.repository'
+export * from './sesion.repository'
+export * from './usuario.repository'

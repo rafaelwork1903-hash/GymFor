@@ -1,8 +1,10 @@
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
+import { SQLiteProvider } from 'expo-sqlite'
 import { useColorScheme } from 'react-native'
 import { TamaguiProvider } from 'tamagui'
 
+import { inicializarBD, NOMBRE_BD } from '../src/db/client'
 import { tamaguiConfig } from '../tamagui.config'
 
 export default function RootLayout() {
@@ -19,9 +21,11 @@ export default function RootLayout() {
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={colorScheme ?? 'light'}>
-      <Stack>
-        <Stack.Screen name="index" options={{ title: 'GymFor' }} />
-      </Stack>
+      <SQLiteProvider databaseName={NOMBRE_BD} onInit={inicializarBD}>
+        <Stack>
+          <Stack.Screen name="index" options={{ title: 'GymFor' }} />
+        </Stack>
+      </SQLiteProvider>
     </TamaguiProvider>
   )
 }
