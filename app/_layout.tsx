@@ -23,7 +23,7 @@ export default function RootLayout() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme={colorScheme ?? 'light'}>
       <SQLiteProvider databaseName={NOMBRE_BD} onInit={inicializarBD}>
         <Stack>
-          <Stack.Screen name="index" options={{ title: 'GymFor' }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
       </SQLiteProvider>
     </TamaguiProvider>
