@@ -5,7 +5,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import type { DiaRutina, EjercicioEnRutina, Rutina } from '../../domain/types'
+import type { DiaRutina, EjercicioEnRutina, Rutina, GrupoMuscular } from '../../domain/types'
 import { ahoraISO, generarId } from '../../utils/id'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ interface RutinaFila {
 
 export type EjercicioEnRutinaDetalle = EjercicioEnRutina & {
   ejercicio_nombre: string
-  grupo_muscular_primario: string
+  grupo_muscular_primario: GrupoMuscular
 }
 
 export type DiaRutinaDetalle = DiaRutina & {
