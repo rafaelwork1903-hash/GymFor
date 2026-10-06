@@ -12,9 +12,11 @@ import { CATALOGO_EJERCICIOS, RUTINAS_SEED, SEMILLA_FECHA } from './seedData'
  * arranque: las filas existentes se ignoran gracias a los IDs deterministas.
  */
 export async function sembrarDatosIniciales(db: SQLiteDatabase): Promise<void> {
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  // `withTransactionAsync` (y no `withExclusiveTransactionAsync`) por
+  // compatibilidad con web. Es seguro: solo se ejecuta durante `inicializarBD`.
+  await db.withTransactionAsync(async () => {
     for (const ejercicio of CATALOGO_EJERCICIOS) {
-      await txn.runAsync(
+      await db.runAsync(
         `INSERT OR IGNORE INTO ejercicios (
           id, nombre, grupo_muscular_primario, grupos_musculares_secundarios,
           equipamiento, es_compuesto, factor_fraccional, instrucciones, video_url
@@ -34,7 +36,7 @@ export async function sembrarDatosIniciales(db: SQLiteDatabase): Promise<void> {
     }
 
     for (const rutina of RUTINAS_SEED) {
-      await txn.runAsync(
+      await db.runAsync(
         `INSERT OR IGNORE INTO rutinas (
           id, usuario_id, nombre, descripcion, activa, creado_en, actualizado_en, sincronizado
         ) VALUES (?, NULL, ?, ?, 0, ?, ?, 0)`,
@@ -43,14 +45,14 @@ export async function sembrarDatosIniciales(db: SQLiteDatabase): Promise<void> {
 
       for (const [ordenDia, dia] of rutina.dias.entries()) {
         const diaId = `${rutina.id}:dia:${ordenDia + 1}`
-        await txn.runAsync(
+        await db.runAsync(
           `INSERT OR IGNORE INTO dias_rutina (id, rutina_id, nombre_dia, orden, notas)
            VALUES (?, ?, ?, ?, ?)`,
           [diaId, rutina.id, dia.nombre_dia, ordenDia + 1, dia.notas ?? null],
         )
 
         for (const [ordenEjercicio, ejercicio] of dia.ejercicios.entries()) {
-          await txn.runAsync(
+          await db.runAsync(
             `INSERT OR IGNORE INTO ejercicios_en_rutina (
               id, dia_id, ejercicio_id, orden, series_objetivo,
               reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos
