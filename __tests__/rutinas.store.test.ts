@@ -57,8 +57,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(listarRutinas as jest.Mock).mockResolvedValue([mockRutina])
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       await act(async () => {
         await result.current.cargarRutinas('u1')
@@ -73,8 +72,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(listarRutinas as jest.Mock).mockRejectedValue(new Error('DB error'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       await act(async () => {
         await result.current.cargarRutinas('u1')
@@ -91,8 +89,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerRutinaDetalle as jest.Mock).mockResolvedValue({ ...mockRutina, dias: [] })
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       await act(async () => {
         await result.current.seleccionarRutina('r1')
@@ -104,8 +101,7 @@ describe('useRutinasStore', () => {
     })
 
     it('null: limpia selección sin ir a BD', async () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({ rutinaSeleccionada: mockRutina as any })
 
       await act(async () => {
@@ -120,8 +116,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerRutinaDetalle as jest.Mock).mockRejectedValue(new Error('Not found'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       await act(async () => {
         await result.current.seleccionarRutina('r1')
@@ -139,8 +134,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(crearRutina as jest.Mock).mockResolvedValue(nuevaRutina)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       let creada: any
       await act(async () => {
@@ -161,8 +155,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(crearRutina as jest.Mock).mockRejectedValue(new Error('Validation error'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       let creada: any
       await act(async () => {
@@ -186,8 +179,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(actualizarRutina as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({ rutinas: [mockRutina] })
 
       await act(async () => {
@@ -204,8 +196,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(activarRutina as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({
         rutinas: [mockRutina, { ...mockRutina, id: 'r2', activa: 1 as const }],
         rutinaSeleccionada: mockRutina as any,
@@ -216,13 +207,12 @@ describe('useRutinasStore', () => {
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
-      expect(result.current.rutinas.find((r: any) => r.id === 'r1')?.activa).toBe(1)
-      expect(result.current.rutinas.find((r: any) => r.id === 'r2')?.activa).toBe(0)
+      expect(result.current.rutinas.find((r) => r.id === 'r1')?.activa).toBe(1)
+      expect(result.current.rutinas.find((r) => r.id === 'r2')?.activa).toBe(0)
     })
 
     it('sin selección: setea error', async () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
 
       await act(async () => {
         await result.current.activarRutinaSeleccionada('u1')
@@ -237,8 +227,7 @@ describe('useRutinasStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(eliminarRutina as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({
         rutinas: [mockRutina],
         rutinaSeleccionada: mockRutina as any,
@@ -256,8 +245,7 @@ describe('useRutinasStore', () => {
 
   describe('limpiarSeleccion', () => {
     it('limpia selección y error', () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useRutinasStore())
+      const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({
         rutinaSeleccionada: mockRutina as any,
         error: 'algun error',

@@ -80,7 +80,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
 
   iniciarSesion: async ({ rutinaId, diaRutinaId, usuarioId }) => {
     await ejecutarAccion(set, async (db) => {
-      const rutinaDetalle = await obtenerRutinaDetalle(db, rutinaId)
+      const rutinaDetalle: RutinaDetalle | null = await obtenerRutinaDetalle(db, rutinaId)
       if (!rutinaDetalle) {
         throw new Error(`Rutina no encontrada: ${rutinaId}`)
       }
@@ -192,6 +192,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     }
 
     await ejecutarAccion(set, async (db) => {
+      // Actualizar la sesión en BD con los datos finales
       await db.runAsync(
         `UPDATE sesiones
          SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, actualizado_en = ?, sincronizado = 0
@@ -212,7 +213,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         notas: params?.notas ?? null,
         rpe_sesion: params?.rpe_sesion ?? null,
         actualizado_en: ahoraISO(),
-        sincronizado: 0 as const,
+        sincronizado: 0,
       }
       return {
         sesionActual: null,

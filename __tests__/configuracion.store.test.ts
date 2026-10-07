@@ -28,7 +28,6 @@ describe('useConfiguracionStore', () => {
 
   describe('cambiarTema', () => {
     it('cambia el tema sincrónicamente sin pasar por cargando', () => {
-      // @ts-ignore - renderHook types in v14
       const { result } = renderHook(() => useConfiguracionStore())
 
       act(() => {
@@ -40,7 +39,6 @@ describe('useConfiguracionStore', () => {
     })
 
     it('persiste el tema en localStorage', () => {
-      // @ts-ignore - renderHook types in v14
       const { result } = renderHook(() => useConfiguracionStore())
 
       act(() => {
@@ -70,8 +68,7 @@ describe('useConfiguracionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerUsuarioPorId as jest.Mock).mockResolvedValue(mockUsuario)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useConfiguracionStore())
+      const { result } = await renderHook(() => useConfiguracionStore())
 
       await act(async () => {
         await result.current.cargarUsuario('u1')
@@ -86,8 +83,7 @@ describe('useConfiguracionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerUsuarioPorId as jest.Mock).mockRejectedValue(new Error('DB down'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useConfiguracionStore())
+      const { result } = await renderHook(() => useConfiguracionStore())
 
       await act(async () => {
         await result.current.cargarUsuario('u1')
@@ -104,8 +100,7 @@ describe('useConfiguracionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(crearUsuario as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useConfiguracionStore())
+      const { result } = await renderHook(() => useConfiguracionStore())
 
       await act(async () => {
         await result.current.crearUsuarioInicial({ nombre: 'Nuevo' })
@@ -123,8 +118,7 @@ describe('useConfiguracionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(crearUsuario as jest.Mock).mockRejectedValue(new Error('Unique constraint'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useConfiguracionStore())
+      const { result } = await renderHook(() => useConfiguracionStore())
 
       await act(async () => {
         await result.current.crearUsuarioInicial({ nombre: 'Nuevo' })
@@ -138,7 +132,6 @@ describe('useConfiguracionStore', () => {
 
   describe('limpiarUsuario', () => {
     it('limpia usuarioActivo y error', () => {
-      // @ts-ignore - renderHook types in v14
       const { result } = renderHook(() => useConfiguracionStore())
       act(() => {
         result.current.cambiarTema('oscuro')

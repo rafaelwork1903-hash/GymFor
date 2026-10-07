@@ -68,24 +68,13 @@ describe('useSesionStore', () => {
     sincronizado: 0 as const,
   }
 
-  const mockSerie = {
-    numero_serie: 1,
-    peso_levantado: 60,
-    reps_realizadas: 10,
-    rpe_serie: 8,
-    rir: null,
-    completada: 1 as const,
-    notas: null,
-  }
-
   describe('iniciarSesion', () => {
     it('éxito: crea sesión y setea sesionActual con registros', async () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerRutinaDetalle as jest.Mock).mockResolvedValue(mockRutinaDetalle)
       ;(crearSesion as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
         await result.current.iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
@@ -101,8 +90,7 @@ describe('useSesionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerRutinaDetalle as jest.Mock).mockResolvedValue(null)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
         await result.current.iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
@@ -119,8 +107,7 @@ describe('useSesionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(agregarSerie as jest.Mock).mockResolvedValue(undefined)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
         sesionActual: {
           sesion: mockSesionBase,
@@ -129,7 +116,7 @@ describe('useSesionStore', () => {
       })
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', mockSerie)
+        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
@@ -138,11 +125,10 @@ describe('useSesionStore', () => {
     })
 
     it('sin sesión activa: setea error', async () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', mockSerie)
+        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
       })
 
       expect(result.current.error).toBe('No hay sesión activa')
@@ -153,8 +139,7 @@ describe('useSesionStore', () => {
     it('éxito: actualiza BD y mueve a historial', async () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({ runAsync: jest.fn().mockResolvedValue(undefined) })
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
         sesionActual: {
           sesion: mockSesionBase,
@@ -173,8 +158,7 @@ describe('useSesionStore', () => {
     })
 
     it('sin sesión activa: setea error', async () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
         await result.current.finalizarSesion()
@@ -190,8 +174,7 @@ describe('useSesionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue(mockSesiones)
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
         await result.current.cargarHistorial('u1')
@@ -205,8 +188,7 @@ describe('useSesionStore', () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(listarSesionesPorUsuario as jest.Mock).mockRejectedValue(new Error('History error'))
 
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
         await result.current.cargarHistorial('u1')
@@ -220,8 +202,7 @@ describe('useSesionStore', () => {
 
   describe('cancelarSesion', () => {
     it('limpia sesión actual y error', () => {
-      // @ts-ignore - renderHook types in v14
-      const { result } = renderHook(() => useSesionStore())
+      const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
         sesionActual: { sesion: mockSesionBase, registros: [] },
         error: 'algun error',

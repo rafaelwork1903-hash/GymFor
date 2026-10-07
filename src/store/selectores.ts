@@ -125,8 +125,8 @@ export function calcularSeriesEfectivasSemanales(
   ]
 
   const aportesPorGrupo = Object.fromEntries(
-    grupos.map((g) => [g, [] as any]),
-  ) as Record<GrupoMuscular, any[]>
+    grupos.map((g) => [g, [] as AporteSeries[]]),
+  ) as Record<GrupoMuscular, AporteSeries[]>
 
   for (const sesion of sesiones) {
     for (const registro of sesion.registros) {
@@ -137,7 +137,7 @@ export function calcularSeriesEfectivasSemanales(
       if (seriesCompletadas === 0) continue
 
       // Aporte directo al grupo primario
-      ;(aportesPorGrupo[ejercicio.grupo_muscular_primario] as any[]).push({
+      aportesPorGrupo[ejercicio.grupo_muscular_primario].push({
         ejercicio: {
           grupo_muscular_primario: ejercicio.grupo_muscular_primario,
           grupos_musculares_secundarios: ejercicio.grupos_musculares_secundarios,
@@ -148,7 +148,7 @@ export function calcularSeriesEfectivasSemanales(
 
       // Aporte indirecto a grupos secundarios
       for (const secundario of ejercicio.grupos_musculares_secundarios) {
-        ;(aportesPorGrupo[secundario] as any[]).push({
+        aportesPorGrupo[secundario].push({
           ejercicio: {
             grupo_muscular_primario: ejercicio.grupo_muscular_primario,
             grupos_musculares_secundarios: [],
@@ -160,9 +160,9 @@ export function calcularSeriesEfectivasSemanales(
     }
   }
 
-  const resultado = {} as Record<GrupoMuscular, number>
+  const resultado: Record<GrupoMuscular, number> = {} as Record<GrupoMuscular, number>
   for (const grupo of grupos) {
-    resultado[grupo] = calcularSeriesEfectivas(grupo, aportesPorGrupo[grupo] as any[])
+    resultado[grupo] = calcularSeriesEfectivas(grupo, aportesPorGrupo[grupo])
   }
   return resultado
 }
