@@ -160,3 +160,52 @@ export interface MetricaProgreso extends CamposPersistidos {
   series_efectivas_semana: number
   tendencia: Tendencia
 }
+
+// ─── Tipos compuestos para UI/Stores ──────────────────────────────────────────
+
+export interface EjercicioEnRutinaDetalle extends EjercicioEnRutina {
+  ejercicio_nombre: string
+  grupo_muscular_primario: GrupoMuscular
+}
+
+export interface DiaRutinaDetalle extends DiaRutina {
+  ejercicios: EjercicioEnRutinaDetalle[]
+}
+
+export interface RutinaDetalle extends Rutina {
+  dias: DiaRutinaDetalle[]
+}
+
+export interface SesionDetalle extends SesionEntrenamiento {
+  registros: RegistroEjercicioDetalle[]
+}
+
+export interface RegistroEjercicioDetalle extends RegistroEjercicio {
+  ejercicio_nombre: string
+  series: SerieReal[]
+}
+
+export interface NuevaRutina {
+  usuario_id: string | null
+  nombre: string
+  descripcion: string
+  dias: Array<{
+    nombre_dia: string
+    notas?: string | null
+    ejercicios: Array<Omit<EjercicioEnRutina, 'id' | 'dia_id'>>
+  }>
+}
+
+export interface NuevaSesion {
+  sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
+  registros: Array<{
+    ejercicio_id: string
+    rpe_ejercicio: number | null
+    series: Array<Omit<SerieReal, 'id' | 'registro_id'>>
+  }>
+}
+
+export interface SesionEjercicioResumen {
+  series: ReadonlyArray<Pick<SerieReal, 'peso_levantado' | 'reps_realizadas' | 'completada' | 'rpe_serie' | 'rir'>>
+  rpe_ejercicio: number | null
+}
