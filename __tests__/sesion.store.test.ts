@@ -116,7 +116,7 @@ describe('useSesionStore', () => {
       })
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
+        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1, notas: null, rpe_serie: null, rir: null })
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
@@ -128,7 +128,7 @@ describe('useSesionStore', () => {
       const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
+        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1, notas: null, rpe_serie: null, rir: null })
       })
 
       expect(result.current.error).toBe('No hay sesión activa')
@@ -201,7 +201,7 @@ describe('useSesionStore', () => {
   })
 
   describe('cancelarSesion', () => {
-    it('limpia sesión actual y error', () => {
+    it('limpia sesión actual y error', async () => {
       const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
         sesionActual: { sesion: mockSesionBase, registros: [] },
