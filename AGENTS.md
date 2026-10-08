@@ -67,3 +67,11 @@ Docs: https://docs.expo.dev/eas/index.md
   - Fixtures inconsistentes en `selectores.test.ts` (id del ejercicio y reps al tope para `subir_peso`); series incompletas en llamadas a `agregarSerie`.
 - Notas: `HStack` no existe en Tamagui 2.7.7 — se usó `XStack`. Tests de render de componentes (tamagui) requieren ajustar `transformIgnorePatterns` de jest: propuesto como tarea aparte (el runner crashea en este entorno al transformar el ESM de tamagui).
 - Verificado: `tsc --noEmit` ✅, `eslint` 0 errores ✅, `jest` 10/10 suites y 88/88 tests ✅.
+
+### 2026-10-08 — feat/screens-rutinas (issue #13)
+
+- `app/(tabs)/rutinas.tsx`: pantalla de gestión sin `PantallaPlaceholder`. Listado de `Card`s con nombre/descripción; la rutina con `activa === 1` se resalta (borde `$blue8`, fondo `$blue2`) con badge "Activa"; botones **Activar** (via `seleccionarRutina` + `activarRutinaSeleccionada`, reflejo instantáneo en el Dashboard) y **Eliminar** (con `Alert` de confirmación); botón superior **Crear nueva rutina** que abre el formulario; estados `cargando`/`error` con reintento y estado vacío.
+- Formulario de creación en `Modal` de React Native (Nombre + Descripción) → `crearRutinaNueva` (sin días aún); guarda/cierra al éxito y muestra el error inline al fallo. No usa `Sheet` de Tamagui porque `@tamagui/config/v5` no define animation driver y `Sheet` lo exige en runtime — migrar a `@tamagui/config/v5-motion` (o `v5-reanimated`) queda propuesto como tarea aparte si se quiere Sheet/animaciones.
+- Nota de datos: activar una rutina sin usuario logueado funciona (activa la plantilla con `usuarioId = ''`); al existir un usuario real, `activarRutina` solo desactiva sus propias rutinas (comportamiento preexistente del repositorio).
+- Sin cambios en stores ni en dominio: la pantalla consume la API existente de `useRutinasStore`.
+- Verificado: `tsc --noEmit` ✅, `eslint` 0 errores ✅ (0 warnings en archivos nuevos), `jest` 10/10 suites y 88/88 tests ✅.
