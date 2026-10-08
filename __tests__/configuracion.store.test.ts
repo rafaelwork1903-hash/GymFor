@@ -27,10 +27,10 @@ describe('useConfiguracionStore', () => {
   })
 
   describe('cambiarTema', () => {
-    it('cambia el tema sincrónicamente sin pasar por cargando', () => {
-      const { result } = renderHook(() => useConfiguracionStore())
+    it('cambia el tema sincrónicamente sin pasar por cargando', async () => {
+      const { result } = await renderHook(() => useConfiguracionStore())
 
-      act(() => {
+      await act(async () => {
         result.current.cambiarTema('oscuro')
       })
 
@@ -38,10 +38,10 @@ describe('useConfiguracionStore', () => {
       expect(result.current.cargando).toBe(false)
     })
 
-    it('persiste el tema en localStorage', () => {
-      const { result } = renderHook(() => useConfiguracionStore())
+    it('persiste el tema en localStorage', async () => {
+      const { result } = await renderHook(() => useConfiguracionStore())
 
-      act(() => {
+      await act(async () => {
         result.current.cambiarTema('oscuro')
       })
 
@@ -131,14 +131,14 @@ describe('useConfiguracionStore', () => {
   })
 
   describe('limpiarUsuario', () => {
-    it('limpia usuarioActivo y error', () => {
-      const { result } = renderHook(() => useConfiguracionStore())
-      act(() => {
+    it('limpia usuarioActivo y error', async () => {
+      const { result } = await renderHook(() => useConfiguracionStore())
+      await act(async () => {
         result.current.cambiarTema('oscuro')
         useConfiguracionStore.setState({ usuarioActivo: { id: 'u1', nombre: 'Test' } as any })
       })
 
-      act(() => {
+      await act(async () => {
         result.current.limpiarUsuario()
       })
 

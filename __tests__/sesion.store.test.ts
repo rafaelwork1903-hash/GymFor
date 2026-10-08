@@ -1,6 +1,6 @@
 import { act } from '@testing-library/react-native'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { useSesionStore } from '../src/store/sesion.store'
+import { useSesionStore, LIMITE_SESIONES_DETALLE } from '../src/store/sesion.store'
 
 jest.mock('../src/db/repositories/sesion.repository', () => ({
   crearSesion: jest.fn(),
@@ -17,7 +17,7 @@ jest.mock('../src/db/client', () => ({
   obtenerBD: jest.fn(),
 }))
 
-import { crearSesion, agregarSerie, listarSesionesPorUsuario } from '../src/db/repositories/sesion.repository'
+import { crearSesion, agregarSerie, obtenerSesionDetalle, listarSesionesPorUsuario } from '../src/db/repositories/sesion.repository'
 import { obtenerRutinaDetalle } from '../src/db/repositories/rutina.repository'
 import { obtenerBD } from '../src/db/client'
 
@@ -27,6 +27,7 @@ describe('useSesionStore', () => {
     useSesionStore.setState({
       sesionActual: null,
       sesiones: [],
+      sesionesDetalle: [],
       cargando: false,
       error: null,
     })
@@ -68,6 +69,28 @@ describe('useSesionStore', () => {
     sincronizado: 0 as const,
   }
 
+  const mockSesionResumen = {
+    ...mockSesionBase,
+    rutina_nombre: 'Rutina',
+    nombre_dia: 'Dia 1',
+  }
+
+  const mockSesionDetalle = {
+    ...mockSesionResumen,
+    registros: [
+      {
+        id: 'reg1',
+        sesion_id: 's1',
+        ejercicio_id: 'ej1',
+        rpe_ejercicio: null,
+        ejercicio_nombre: 'Press banca',
+        series: [
+          { id: 'se1', registro_id: 'reg1', numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, rpe_serie: null, rir: null, completada: 1 as const, notas: null },
+        ],
+      },
+    ],
+  }
+
   describe('iniciarSesion', () => {
     it('éxito: crea sesión y setea sesionActual con registros', async () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
@@ -83,6 +106,8 @@ describe('useSesionStore', () => {
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.sesionActual).not.toBeNull()
       expect(result.current.sesionActual?.registros).toHaveLength(1)
+      expect(result.current.sesionActual?.rutina_nombre).toBe('Rutina')
+      expect(result.current.sesionActual?.nombre_dia).toBe('Dia 1')
       expect(result.current.error).toBeNull()
     })
 
@@ -112,11 +137,21 @@ describe('useSesionStore', () => {
         sesionActual: {
           sesion: mockSesionBase,
           registros: [{ registro_id: 'reg1', ejercicio_id: 'ej1', ejercicio_nombre: 'Test', rpe_ejercicio: null, series: [] }],
+          rutina_nombre: 'Rutina',
+          nombre_dia: 'Dia 1',
         },
       })
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
+        await result.current.agregarSerie('reg1', {
+          numero_serie: 1,
+          peso_levantado: 60,
+          reps_realizadas: 10,
+          rpe_serie: null,
+          rir: null,
+          completada: 1,
+          notas: null,
+        })
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
@@ -128,7 +163,15 @@ describe('useSesionStore', () => {
       const { result } = await renderHook(() => useSesionStore())
 
       await act(async () => {
-        await result.current.agregarSerie('reg1', { numero_serie: 1, peso_levantado: 60, reps_realizadas: 10, completada: 1 })
+        await result.current.agregarSerie('reg1', {
+          numero_serie: 1,
+          peso_levantado: 60,
+          reps_realizadas: 10,
+          rpe_serie: null,
+          rir: null,
+          completada: 1,
+          notas: null,
+        })
       })
 
       expect(result.current.error).toBe('No hay sesión activa')
@@ -136,14 +179,18 @@ describe('useSesionStore', () => {
   })
 
   describe('finalizarSesion', () => {
-    it('éxito: actualiza BD y mueve a historial', async () => {
+    it('éxito: actualiza BD y mueve a historial con nombres de rutina', async () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({ runAsync: jest.fn().mockResolvedValue(undefined) })
 
       const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
         sesionActual: {
           sesion: mockSesionBase,
-          registros: [],
+          registros: [
+            { registro_id: 'reg1', ejercicio_id: 'ej1', ejercicio_nombre: 'Press banca', rpe_ejercicio: null, series: [] },
+          ],
+          rutina_nombre: 'Rutina',
+          nombre_dia: 'Dia 1',
         },
       })
 
@@ -155,6 +202,10 @@ describe('useSesionStore', () => {
       expect(result.current.sesionActual).toBeNull()
       expect(result.current.sesiones).toHaveLength(1)
       expect(result.current.sesiones[0].duracion_minutos).toBe(60)
+      expect(result.current.sesiones[0].rutina_nombre).toBe('Rutina')
+      expect(result.current.sesiones[0].nombre_dia).toBe('Dia 1')
+      expect(result.current.sesionesDetalle).toHaveLength(1)
+      expect(result.current.sesionesDetalle[0].registros[0].ejercicio_nombre).toBe('Press banca')
     })
 
     it('sin sesión activa: setea error', async () => {
@@ -169,10 +220,13 @@ describe('useSesionStore', () => {
   })
 
   describe('cargarHistorial', () => {
-    it('éxito: carga sesiones', async () => {
-      const mockSesiones = [mockSesionBase]
+    it('éxito: carga sesiones y el detalle de las últimas sesiones', async () => {
+      const mockSesiones = [mockSesionResumen, { ...mockSesionResumen, id: 's2' }]
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue(mockSesiones)
+      ;(obtenerSesionDetalle as jest.Mock)
+        .mockResolvedValueOnce(mockSesionDetalle)
+        .mockResolvedValueOnce(null)
 
       const { result } = await renderHook(() => useSesionStore())
 
@@ -182,6 +236,28 @@ describe('useSesionStore', () => {
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.sesiones).toEqual(mockSesiones)
+      expect(obtenerSesionDetalle).toHaveBeenCalledTimes(2)
+      expect(result.current.sesionesDetalle).toEqual([mockSesionDetalle])
+    })
+
+    it('no carga más detalles que el límite de sesiones recientes', async () => {
+      const mockSesiones = Array.from({ length: LIMITE_SESIONES_DETALLE + 3 }, (_, i) => ({
+        ...mockSesionResumen,
+        id: `s${i}`,
+      }))
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue(mockSesiones)
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(mockSesionDetalle)
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarHistorial('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(obtenerSesionDetalle).toHaveBeenCalledTimes(LIMITE_SESIONES_DETALLE)
+      expect(result.current.sesionesDetalle).toHaveLength(LIMITE_SESIONES_DETALLE)
     })
 
     it('error: repo rechaza -> error seteado, cargando false', async () => {
@@ -201,10 +277,10 @@ describe('useSesionStore', () => {
   })
 
   describe('cancelarSesion', () => {
-    it('limpia sesión actual y error', () => {
+    it('limpia sesión actual y error', async () => {
       const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
-        sesionActual: { sesion: mockSesionBase, registros: [] },
+        sesionActual: { sesion: mockSesionBase, registros: [], rutina_nombre: 'Rutina', nombre_dia: 'Dia 1' },
         error: 'algun error',
       })
 

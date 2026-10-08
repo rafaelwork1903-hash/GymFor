@@ -180,6 +180,15 @@ export interface SesionDetalle extends SesionEntrenamiento {
   registros: RegistroEjercicioDetalle[]
 }
 
+/**
+ * Sesión para listados (dashboard/historial): añade los nombres resueltos
+ * por JOIN del día de rutina y su rutina. NULL si el día/rutina desapareció.
+ */
+export interface SesionResumen extends SesionEntrenamiento {
+  rutina_nombre: string | null
+  nombre_dia: string | null
+}
+
 export interface RegistroEjercicioDetalle extends RegistroEjercicio {
   ejercicio_nombre: string
   series: SerieReal[]

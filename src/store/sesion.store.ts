@@ -10,6 +10,7 @@ import { create } from 'zustand'
 import type {
   SesionEntrenamiento,
   SesionDetalle,
+  SesionResumen,
   NuevaSesion,
   RegistroEjercicio,
   SerieReal,
@@ -35,11 +36,20 @@ interface RegistroEnCurso {
 interface SesionEnCurso {
   sesion: SesionEntrenamiento
   registros: RegistroEnCurso[]
+  /** Nombres capturados al iniciar, para el resumen del historial. */
+  rutina_nombre: string
+  nombre_dia: string
 }
+
+/** Nº de sesiones recientes cuyo detalle se carga para métricas/indicadores. */
+export const LIMITE_SESIONES_DETALLE = 5
 
 export interface SesionEstado extends EstadoCarga {
   sesionActual: SesionEnCurso | null
-  sesiones: SesionEntrenamiento[]
+  /** Listado del historial con nombres de rutina/día resueltos. */
+  sesiones: SesionResumen[]
+  /** Detalle (registros + series) de las últimas sesiones, para métricas. */
+  sesionesDetalle: SesionDetalle[]
   iniciarSesion: (params: {
     rutinaId: string
     diaRutinaId: string
@@ -75,6 +85,7 @@ function crearRegistrosDesdeRutina(
 export const useSesionStore = create<SesionEstado>((set, get) => ({
   sesionActual: null,
   sesiones: [],
+  sesionesDetalle: [],
   cargando: false,
   error: null,
 
@@ -126,6 +137,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           sincronizado: 0 as const,
         },
         registros,
+        rutina_nombre: rutinaDetalle.nombre,
+        nombre_dia: dia.nombre_dia,
       }
     }, (resultado) => ({ sesionActual: resultado }))
   },
@@ -207,17 +220,31 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       )
       return sesionActual.sesion.id
     }, () => {
-      const sesionFinalizada: SesionEntrenamiento = {
+      const sesionFinalizada: SesionResumen = {
         ...sesionActual.sesion,
         duracion_minutos: params?.duracion_minutos ?? null,
         notas: params?.notas ?? null,
         rpe_sesion: params?.rpe_sesion ?? null,
         actualizado_en: ahoraISO(),
         sincronizado: 0,
+        rutina_nombre: sesionActual.rutina_nombre,
+        nombre_dia: sesionActual.nombre_dia,
+      }
+      const detalleFinalizada: SesionDetalle = {
+        ...sesionFinalizada,
+        registros: sesionActual.registros.map((registro) => ({
+          id: registro.registro_id,
+          sesion_id: sesionActual.sesion.id,
+          ejercicio_id: registro.ejercicio_id,
+          rpe_ejercicio: registro.rpe_ejercicio,
+          ejercicio_nombre: registro.ejercicio_nombre,
+          series: registro.series,
+        })),
       }
       return {
         sesionActual: null,
         sesiones: [sesionFinalizada, ...get().sesiones],
+        sesionesDetalle: [detalleFinalizada, ...get().sesionesDetalle].slice(0, LIMITE_SESIONES_DETALLE),
       }
     })
   },
@@ -227,8 +254,15 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   cargarHistorial: async (usuarioId, rango) => {
     await ejecutarAccion(set, async (db) => {
       const sesiones = await listarSesionesPorUsuario(db, usuarioId, rango)
-      return sesiones
-    }, (sesiones) => ({ sesiones }))
+      const sesionesDetalle: SesionDetalle[] = []
+      for (const sesion of sesiones.slice(0, LIMITE_SESIONES_DETALLE)) {
+        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        if (detalle) {
+          sesionesDetalle.push(detalle)
+        }
+      }
+      return { sesiones, sesionesDetalle }
+    }, (resultado) => resultado)
   },
 
   limpiarError: () => set({ error: null }),

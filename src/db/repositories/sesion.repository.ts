@@ -5,20 +5,12 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import type { RegistroEjercicio, SerieReal, SesionEntrenamiento } from '../../domain/types'
+import type { RegistroEjercicio, SerieReal, SesionEntrenamiento, SesionResumen } from '../../domain/types'
 import { ahoraISO, generarId } from '../../utils/id'
 
-interface SesionFila {
-  id: string
-  usuario_id: string
-  dia_rutina_id: string
-  fecha: string
-  duracion_minutos: number | null
-  notas: string | null
-  rpe_sesion: number | null
-  creado_en: string
-  actualizado_en: string
-  sincronizado: number
+interface SesionFila extends SesionEntrenamiento {
+  rutina_nombre: string | null
+  nombre_dia: string | null
 }
 
 export type SerieRealDetalle = SerieReal
@@ -42,29 +34,38 @@ export interface NuevaSesion {
   }[]
 }
 
-function aDominio(fila: SesionFila): SesionEntrenamiento {
+function aDominio(fila: SesionFila): SesionResumen {
   return { ...fila, sincronizado: fila.sincronizado === 1 ? 1 : 0 }
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
+/**
+ * Sesiones del usuario con el nombre de la rutina y del día resueltos
+ * (LEFT JOIN: la FK de `sesiones.dia_rutina_id` es ON DELETE RESTRICT,
+ * pero se tolera NULL por robustez ante datos externos).
+ */
 export async function listarSesionesPorUsuario(
   db: SQLiteDatabase,
   usuarioId: string,
   rango: { desde?: string; hasta?: string } = {},
-): Promise<SesionEntrenamiento[]> {
-  const condiciones = ['usuario_id = ?']
+): Promise<SesionResumen[]> {
+  const condiciones = ['s.usuario_id = ?']
   const parametros: string[] = [usuarioId]
   if (rango.desde) {
-    condiciones.push('fecha >= ?')
+    condiciones.push('s.fecha >= ?')
     parametros.push(rango.desde)
   }
   if (rango.hasta) {
-    condiciones.push('fecha < ?')
+    condiciones.push('s.fecha < ?')
     parametros.push(rango.hasta)
   }
   const filas = await db.getAllAsync<SesionFila>(
-    `SELECT * FROM sesiones WHERE ${condiciones.join(' AND ')} ORDER BY fecha DESC`,
+    `SELECT s.*, r.nombre AS rutina_nombre, dr.nombre_dia
+     FROM sesiones s
+     LEFT JOIN dias_rutina dr ON dr.id = s.dia_rutina_id
+     LEFT JOIN rutinas r ON r.id = dr.rutina_id
+     WHERE ${condiciones.join(' AND ')} ORDER BY s.fecha DESC`,
     parametros,
   )
   return filas.map(aDominio)

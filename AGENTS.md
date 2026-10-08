@@ -51,3 +51,19 @@ Docs: https://docs.expo.dev/eas/index.md
 - Commits con mensaje conveccional recomendado: `feat:`, `fix:`, `chore:`
 - `main` siempre debe estar estable y probada en dispositivo
 - Después del merge, `bun install` y verificar build expo
+
+## Checkpoints de progreso
+
+### 2026-10-08 — feat/screens-dashboard (issue #11)
+
+- `app/(tabs)/index.tsx`: Dashboard operativo sin `PantallaPlaceholder`. Saludo + perfil desde `useConfiguracionStore`; tarjeta de rutina activa (`activa === 1`) con CTA **Iniciar Entrenamiento** → `/sesion` (o CTA *Ir a Rutinas* si no hay activa); indicadores (volumen reciente, mejor 1RM, sesiones) y últimas 5 sesiones con fecha, rutina y día. Manejo de `cargando`/`error` con reintento.
+- `listarSesionesPorUsuario` ahora devuelve `SesionResumen` (`LEFT JOIN` a `dias_rutina`/`rutinas` para nombre de rutina y día).
+- `useSesionStore`: `sesiones` pasa a `SesionResumen[]`; nuevo `sesionesDetalle` (detalle de las últimas 5 sesiones, para métricas); `iniciarSesion`/`finalizarSesion` propagan los nombres de rutina/día.
+- `selectores.ts`: nuevos agregados puros `calcularVolumenTotalSesiones` y `calcularMejor1RMSesiones` (con tests).
+- Bugs preexistentes arreglados para dejar la suite en verde (en main fallaban 6 tests, 8 errores de `tsc` y 2 suites ni compilaban):
+  - `async` faltante en `sesion.store.test.ts` y `rutinas.store.test.ts`; `act` síncrono → `await act(async …)` en `configuracion.store.test.ts` (React 19 + RNTL 14).
+  - `jest-setup.ts`: mock de `localStorage` con estado en memoria (el test de persistencia lo necesita) y `globalThis` en vez de `global` (sin @types/node).
+  - `selectores.ts`: `obtenerHistorialEjercicio` ahora ordena cronológicamente (contracto de su docstring) y los aportes indirectos de `calcularSeriesEfectivasSemanales` vuelven a contar (0.5/serie).
+  - Fixtures inconsistentes en `selectores.test.ts` (id del ejercicio y reps al tope para `subir_peso`); series incompletas en llamadas a `agregarSerie`.
+- Notas: `HStack` no existe en Tamagui 2.7.7 — se usó `XStack`. Tests de render de componentes (tamagui) requieren ajustar `transformIgnorePatterns` de jest: propuesto como tarea aparte (el runner crashea en este entorno al transformar el ESM de tamagui).
+- Verificado: `tsc --noEmit` ✅, `eslint` 0 errores ✅, `jest` 10/10 suites y 88/88 tests ✅.
