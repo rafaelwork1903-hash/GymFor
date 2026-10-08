@@ -44,11 +44,11 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Git Workflow
 
-- **1 tarea = 1 rama** = 1 PR: `feat/<descripcion>`, `fix/<descripcion>`, `chore/<descripcion>`
+- **1 tarea = 1 rama**: `feat/<descripcion>`, `fix/<descripcion>`, `chore/<descripcion>`
 - Las ramas se crean desde `main`: `git checkout -b feat/nombre main`
-- El usuario asigna las tareas y revisa los PRs siempre
-- **Ningún agente hace merge con main**. Solo el usuario tiene permiso para mergear después de revisar
-- Commits con mensaje conveccional recomendado: `feat:`, `fix:`, `chore:`
+- **Los agentes NO abren PRs**. Al terminar la tarea: verifican (`bunx tsc --noEmit`, `bunx expo lint`, `bun run test`), commitean, pushean la rama y **avisan al usuario únicamente con el nombre de la rama** (p. ej. "Terminado, rama: `feat/screens-sesion`")
+- El usuario asigna las tareas, revisa el diff de la rama, **crea el PR él mismo** y hace el merge. **Ningún agente hace merge con main**
+- Commits con mensaje convencional recomendado: `feat:`, `fix:`, `chore:`
 - `main` siempre debe estar estable y probada en dispositivo
 - Después del merge, `bun install` y verificar build expo
 
@@ -70,8 +70,11 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ### 2026-10-08 — feat/screens-rutinas (issue #13)
 
-- `app/(tabs)/rutinas.tsx`: pantalla de gestión sin `PantallaPlaceholder`. Listado de `Card`s con nombre/descripción; la rutina con `activa === 1` se resalta (borde `$blue8`, fondo `$blue2`) con badge "Activa"; botones **Activar** (via `seleccionarRutina` + `activarRutinaSeleccionada`, reflejo instantáneo en el Dashboard) y **Eliminar** (con `Alert` de confirmación); botón superior **Crear nueva rutina** que abre el formulario; estados `cargando`/`error` con reintento y estado vacío.
-- Formulario de creación en `Modal` de React Native (Nombre + Descripción) → `crearRutinaNueva` (sin días aún); guarda/cierra al éxito y muestra el error inline al fallo. No usa `Sheet` de Tamagui porque `@tamagui/config/v5` no define animation driver y `Sheet` lo exige en runtime — migrar a `@tamagui/config/v5-motion` (o `v5-reanimated`) queda propuesto como tarea aparte si se quiere Sheet/animaciones.
+- `app/(tabs)/rutinas.tsx`: pantalla de gestión sin `PantallaPlaceholder`. Listado de `Card`s con nombre/descripción; la rutina con `activa === 1` se resalta (borde `$blue8`, fondo `$blue2`) con badge "Activa"; botones **Activar** (via `seleccionarRutina` + `activarRutinaSeleccionada`, reflejo instantáneo en el Dashboard) y **Eliminar** (con confirmación multiplataforma); botón superior **Crear nueva rutina** fijo fuera del scroll; estados `cargando`/`error` con reintento y estado vacío.
+- Listado envuelto en `ScrollView`: con varias rutinas las últimas tarjetas son alcanzables en móvil (el botón "Crear nueva rutina" y el banner de error quedan fijos fuera del scroll).
+- Confirmación de borrado multiplataforma: `react-native-web` implementa `Alert.alert` como stub vacío → en web se usa `window.confirm(...)` y en nativo `Alert.alert(...)` con botón destructivo.
+- Al activar, tras `seleccionarRutina` se verifica `useRutinasStore.getState().rutinaSeleccionada?.id === rutina.id` (y que no haya `error`) antes de llamar `activarRutinaSeleccionada`: si la selección falla, no se intenta activar y el banner muestra el error real en vez de "No hay rutina seleccionada para activar".
+- Formulario de creación en `Modal` de React Native (Nombre + Descripción) → `crearRutinaNueva` (sin días aún); guarda/cierra al éxito y muestra el error inline al fallo. Con `KeyboardAvoidingView` (`padding` solo en iOS) para que el teclado no tape los campos; **pendiente de prueba en dispositivo**. No usa `Sheet` de Tamagui porque `@tamagui/config/v5` no define animation driver y `Sheet` lo exige en runtime — migrar a `@tamagui/config/v5-motion` (o `v5-reanimated`) queda propuesto como tarea aparte si se quiere Sheet/animaciones.
 - Nota de datos: activar una rutina sin usuario logueado funciona (activa la plantilla con `usuarioId = ''`); al existir un usuario real, `activarRutina` solo desactiva sus propias rutinas (comportamiento preexistente del repositorio).
 - Sin cambios en stores ni en dominio: la pantalla consume la API existente de `useRutinasStore`.
 - Verificado: `tsc --noEmit` ✅, `eslint` 0 errores ✅ (0 warnings en archivos nuevos), `jest` 10/10 suites y 88/88 tests ✅.
