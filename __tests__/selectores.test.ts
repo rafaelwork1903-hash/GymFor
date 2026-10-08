@@ -3,6 +3,8 @@ import {
   calcularProgresoEjercicio,
   calcularSeriesEfectivasSemanales,
   calcularVolumenPorEjercicio,
+  calcularVolumenTotalSesiones,
+  calcularMejor1RMSesiones,
 } from '../src/store/selectores'
 import type { SesionDetalle, Ejercicio, SerieReal, RegistroEjercicioDetalle } from '../src/domain/types'
 
@@ -76,8 +78,9 @@ describe('selectores', () => {
   describe('calcularProgresoEjercicio', () => {
     it('calcula progreso completo con historial', () => {
       const sesiones = [
-        mockSesion('2024-01-01', [mockRegistro('ej1', [mockSerie(60, 10)])]),
-        mockSesion('2024-01-08', [mockRegistro('ej1', [mockSerie(62.5, 10)])]),
+        mockSesion('2024-01-01', [mockRegistro('ej:press_banca', [mockSerie(60, 10)])]),
+        // Última sesión al tope de reps (12) con RPE 8: dispara "subir_peso".
+        mockSesion('2024-01-08', [mockRegistro('ej:press_banca', [mockSerie(62.5, 12)])]),
       ]
       const progreso = calcularProgresoEjercicio(sesiones, mockEjercicio, 8, 12, 62.5)
 
@@ -141,6 +144,41 @@ describe('selectores', () => {
       const volumen = calcularVolumenPorEjercicio(sesiones)
       expect(volumen.get('ej1')).toBe(1225)
       expect(volumen.get('ej2')).toBe(500)
+    })
+  })
+
+  describe('calcularVolumenTotalSesiones', () => {
+    it('suma el volumen de todas las sesiones ignorando series no completadas', () => {
+      const sesiones = [
+        mockSesion('2024-01-01', [
+          mockRegistro('ej1', [mockSerie(60, 10), mockSerie(60, 10, 0)]),
+          mockRegistro('ej2', [mockSerie(100, 5)]),
+        ]),
+        mockSesion('2024-01-08', [mockRegistro('ej1', [mockSerie(62.5, 10)])]),
+      ]
+      // 60×10 + 100×5 + 62.5×10 = 600 + 500 + 625
+      expect(calcularVolumenTotalSesiones(sesiones)).toBe(1725)
+    })
+
+    it('devuelve 0 sin sesiones', () => {
+      expect(calcularVolumenTotalSesiones([])).toBe(0)
+    })
+  })
+
+  describe('calcularMejor1RMSesiones', () => {
+    it('devuelve el mejor 1RM (Epley) entre todas las series completadas', () => {
+      const sesiones = [
+        mockSesion('2024-01-01', [mockRegistro('ej1', [mockSerie(60, 10)])]),
+        mockSesion('2024-01-08', [mockRegistro('ej2', [mockSerie(100, 3)])]),
+      ]
+      // 60×(1+0.0333×10) = 79.98 ; 100×(1+0.0333×3) = 109.99
+      expect(calcularMejor1RMSesiones(sesiones)).toBeCloseTo(109.99, 2)
+    })
+
+    it('ignora series no completadas y devuelve 0 si no hay ninguna', () => {
+      const sesiones = [mockSesion('2024-01-01', [mockRegistro('ej1', [mockSerie(60, 10, 0)])])]
+      expect(calcularMejor1RMSesiones(sesiones)).toBe(0)
+      expect(calcularMejor1RMSesiones([])).toBe(0)
     })
   })
 })

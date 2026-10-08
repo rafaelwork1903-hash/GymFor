@@ -36,7 +36,10 @@ export function obtenerHistorialEjercicio(
 ): SesionEjercicioResumen[] {
   const historial: SesionEjercicioResumen[] = []
 
-  for (const sesion of sesiones) {
+  // Cronológico (la más antigua primero): `listarSesionesPorUsuario` entrega
+  // las sesiones en orden DESC, así que se ordenan explícitamente por fecha.
+  const sesionesOrdenadas = [...sesiones].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  for (const sesion of sesionesOrdenadas) {
     const registro = sesion.registros.find((r) => r.ejercicio_id === ejercicioId)
     if (registro && registro.series.some((s) => s.completada === 1)) {
       historial.push({
@@ -146,12 +149,14 @@ export function calcularSeriesEfectivasSemanales(
         series_directas: seriesCompletadas,
       })
 
-      // Aporte indirecto a grupos secundarios
+      // Aporte indirecto a grupos secundarios: el aporte se registra contra
+      // el grupo secundario (0.5 por serie vía FACTOR_FRACCIONAL_INDIRECTO
+      // dentro de `calcularSeriesEfectivas`).
       for (const secundario of ejercicio.grupos_musculares_secundarios) {
         aportesPorGrupo[secundario].push({
           ejercicio: {
             grupo_muscular_primario: ejercicio.grupo_muscular_primario,
-            grupos_musculares_secundarios: [],
+            grupos_musculares_secundarios: [secundario],
             factor_fraccional: ejercicio.factor_fraccional,
           },
           series_directas: seriesCompletadas,
@@ -185,4 +190,31 @@ export function calcularVolumenPorEjercicio(
   }
 
   return volumen
+}
+
+/**
+ * Volumen total de un conjunto de sesiones (Σ peso × reps de series completadas).
+ * Usado por los indicadores del dashboard.
+ */
+export function calcularVolumenTotalSesiones(sesiones: SesionDetalle[]): number {
+  return sesiones.reduce(
+    (total, sesion) =>
+      total + sesion.registros.reduce((acc, registro) => acc + calcularVolumenTotal(registro.series), 0),
+    0,
+  )
+}
+
+/**
+ * Mejor 1RM estimado (Epley) entre todas las series completadas de las sesiones.
+ * Devuelve 0 si no hay series registradas.
+ */
+export function calcularMejor1RMSesiones(sesiones: SesionDetalle[]): number {
+  return sesiones.reduce(
+    (mejor, sesion) =>
+      sesion.registros.reduce(
+        (max, registro) => Math.max(max, calcularMejor1RM(registro.series)),
+        mejor,
+      ),
+    0,
+  )
 }

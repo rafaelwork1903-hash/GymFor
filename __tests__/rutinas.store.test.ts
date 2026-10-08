@@ -244,7 +244,7 @@ describe('useRutinasStore', () => {
   })
 
   describe('limpiarSeleccion', () => {
-    it('limpia selección y error', () => {
+    it('limpia selección y error', async () => {
       const { result } = await renderHook(() => useRutinasStore())
       useRutinasStore.setState({
         rutinaSeleccionada: mockRutina as any,
