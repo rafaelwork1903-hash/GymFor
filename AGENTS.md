@@ -42,11 +42,29 @@ Docs: https://docs.expo.dev/eas/index.md
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
 
+## Mapa del proyecto (contexto para agentes — evita leer todo el código)
+
+**Stack**: Expo SDK 57 · bun · React 19.2.3 · RN 0.86.3 · Tamagui 2.7.7 (`@tamagui/config/v5`) · expo-router · expo-sqlite (web = WASM worker; `metro.config.js` añade `wasm` + cabeceras COOP/COEP) · zustand 5. Mobile-first; web es solo preview.
+
+**Capas** (dependen hacia abajo, nunca al revés): `app/` (pantallas) → `src/store/` (zustand) → `src/db/repositories/` (reciben `db` como 1er argumento) · `src/domain/` = lógica pura sin I/O.
+
+- `app/_layout.tsx`: raíz — `useFonts` (con fallback ante error), TamaguiProvider, ErrorBoundary + SQLiteProvider(`onInit=inicializarBD`). `app/(tabs)/`: `index` (Dashboard ✅), `rutinas` (✅), `sesion`, `historial`, `progreso` = `PantallaPlaceholder`.
+- `src/store/configuracion.store`: `usuarioActivo` (persistido), `tema`, `crearUsuarioInicial` (aún sin pantalla de onboarding). `rutinas.store`: `cargarRutinas`, `seleccionarRutina(id)` → `rutinaSeleccionada: RutinaDetalle` (días con ejercicios y objetivos), `crearRutinaNueva`, `activarRutinaSeleccionada(usuarioId)` (opera sobre `rutinaSeleccionada`), `eliminarRutinaPorId`. `sesion.store`: `sesionActual {sesion, registros[{registro_id, ejercicio_nombre, series}], rutina_nombre, nombre_dia}`; `iniciarSesion({rutinaId, diaRutinaId, usuarioId})` crea la sesión EN BD; `agregarSerie(registroId, Omit<SerieReal,'id'|'registro_id'>)` — el CALLER calcula `numero_serie`; `finalizarSesion({duracion_minutos, notas, rpe_sesion})`; `cargarHistorial` llena `sesiones` (SesionResumen) + `sesionesDetalle`. `selectores.ts`: `calcularVolumenTotalSesiones`, `calcularMejor1RMSesiones`. `utilidades.ts`: `ejecutarAccion` maneja `cargando`/`error` — ninguna acción lanza sin capturar.
+- `src/db/`: `client.ts` (`obtenerBD()` singleton), `migrations.ts` (versionadas + `repararVersionInconsistente`), `seed.ts` (2 rutinas plantilla + catálogo de ejercicios), `repositories/sesion.repository.ts` (`crearSesion`, `agregarSerie`, `obtenerSesionDetalle`, `listarSesionesPorUsuario` → `SesionResumen`). FK del esquema: borrar una sesión hace CASCADE a registros y series.
+- `src/domain/types.ts`: `SerieReal {numero_serie, peso_levantado, reps_realizadas, rpe_serie (1-10) | rir (0-10), completada, notas}`, `EjercicioEnRutinaDetalle {ejercicio_nombre, series_objetivo, reps_objetivo_min/max, peso_objetivo, descanso_segundos}`. `metrics.ts`: `calcular1RMEpley`, `calcularVolumenTotal`, `calcularVolumenSerie`. `progression.ts`: `sugerirProgresion`, `detectarEstancamiento`, `calcularTendencia`, `redondearCarga`.
+
+**Convenciones UI**: `XStack`/`YStack` (NO existe `HStack`) · tokens `$gray1..12`, `$blue*`, `$red*` · listados SIEMPRE en `ScrollView` · estados `cargando` (spinner) y `error` (tarjeta con Reintentar) · nunca `return null` sin fallback visible · confirmaciones: `window.confirm` en web (`Alert` es stub vacío en RNW) y `Alert.alert` en nativo · inputs numéricos con `keyboardType="numeric"` · JSDoc en español.
+
+**Tests**: `__tests__/`, jest-expo, repositorios mockeados con `jest.mock`. Regla actual: 10 suites / 88 tests. Tests de RENDER con tamagui crashean en este entorno (falta ajustar `transformIgnorePatterns`) — probar lógica en stores/selectores, no renders.
+
+**Gaps conocidos** (no arreglar de gratis, anotar en el checkpoint): `actualizarSerie`/`eliminarSerie` del sesion.store son SOLO locales (no persisten en BD) — no exponerlas en UI; `cancelarSesion` solo limpia el estado (deja la fila huérfana en BD); `Sheet` de Tamagui requiere migrar config a `v5-motion`; no hay onboarding de usuario.
+
 ## Git Workflow
 
 - **1 tarea = 1 rama**: `feat/<descripcion>`, `fix/<descripcion>`, `chore/<descripcion>`
 - Las ramas se crean desde `main`: `git checkout -b feat/nombre main`
 - **Los agentes NO abren PRs**. Al terminar la tarea: verifican (`bunx tsc --noEmit`, `bunx expo lint`, `bun run test`), commitean, pushean la rama y **avisan al usuario únicamente con el nombre de la rama** (p. ej. "Terminado, rama: `feat/screens-sesion`")
+- **Checkpoint obligatorio**: antes de pushear, añade tu entrada en `## Checkpoints de progreso` de este archivo (fecha — rama — qué hiciste, decisiones tomadas, verificación ejecutada). Solo documenta lo que realmente está en el diff
 - El usuario asigna las tareas, revisa el diff de la rama, **crea el PR él mismo** y hace el merge. **Ningún agente hace merge con main**
 - Commits con mensaje convencional recomendado: `feat:`, `fix:`, `chore:`
 - `main` siempre debe estar estable y probada en dispositivo
