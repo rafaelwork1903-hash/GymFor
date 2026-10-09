@@ -1,12 +1,14 @@
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import { SQLiteProvider } from 'expo-sqlite'
+import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { useColorScheme } from 'react-native'
 import { TamaguiProvider } from 'tamagui'
 
 import { ErrorBoundary } from '../src/components/ui/ErrorBoundary'
 import { inicializarBD, NOMBRE_BD } from '../src/db/client'
+import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
 
 /** Espera máxima de las fuentes antes de renderizar con las del sistema. */
@@ -14,6 +16,15 @@ const TIMEOUT_FUENTES_MS = 3000
 
 export default function RootLayout() {
   const colorScheme = useColorScheme()
+  // Tema de la app: preferencia del usuario (persistida) con fallback al
+  // esquema del sistema. `TamaguiProvider` lo aplica dinámicamente.
+  const temaPreferido = useConfiguracionStore((s) => s.tema)
+  const temaResuelto =
+    temaPreferido === 'oscuro'
+      ? 'dark'
+      : temaPreferido === 'claro'
+        ? 'light'
+        : (colorScheme ?? 'light')
 
   const [fontsLoaded, fontError] = useFonts({
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
@@ -49,7 +60,8 @@ export default function RootLayout() {
   }
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme={colorScheme ?? 'light'}>
+    <TamaguiProvider config={tamaguiConfig} defaultTheme={temaResuelto}>
+      <StatusBar style={temaResuelto === 'dark' ? 'light' : 'dark'} />
       {/* SQLiteProvider lanza durante el render si `onInit` rechaza; el
           boundary lo convierte en una pantalla de error con reintento. */}
       <ErrorBoundary titulo="No se pudo iniciar la base de datos">

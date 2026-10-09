@@ -520,7 +520,7 @@ export default function SesionScreen() {
 
   if (sesionTerminada) {
     return (
-      <YStack flex={1} background="$background" padding="$4" gap="$4">
+      <YStack flex={1} backgroundColor="$background" padding="$4" gap="$4">
         {bannerError}
         <YStack flex={1} justifyContent="center" alignItems="center" gap="$3">
           <Ionicons name="checkmark-circle" size={64} color={tema.blue9?.val} />
@@ -562,7 +562,7 @@ export default function SesionScreen() {
 
   if (sesionActual) {
     return (
-      <YStack flex={1} background="$background">
+      <YStack flex={1} backgroundColor="$background">
         <YStack padding="$4" paddingBottom="$2" gap="$3">
           {bannerError}
           <Card size="$4" borderWidth={1} borderColor="$borderColor" padding="$4" gap="$3">
@@ -647,7 +647,7 @@ export default function SesionScreen() {
 
   // ── Sin sesión activa ────────────────────────────────────────────────────────
   return (
-    <YStack flex={1} background="$background">
+    <YStack flex={1} backgroundColor="$background">
       <YStack padding="$4" paddingBottom="$2">
         {bannerError}
       </YStack>

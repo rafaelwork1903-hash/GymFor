@@ -48,6 +48,18 @@ describe('useConfiguracionStore', () => {
       const stored = localStorage.getItem('gymfor-configuracion')
       expect(stored).toContain('"tema":"oscuro"')
     })
+
+    it('acepta el modo sistema y lo persiste', async () => {
+      const { result } = await renderHook(() => useConfiguracionStore())
+
+      await act(async () => {
+        result.current.cambiarTema('sistema')
+      })
+
+      expect(result.current.tema).toBe('sistema')
+      const stored = localStorage.getItem('gymfor-configuracion')
+      expect(stored).toContain('"tema":"sistema"')
+    })
   })
 
   describe('cargarUsuario', () => {

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useMemo } from 'react'
+import type { ComponentProps } from 'react'
 import {
   Button,
   Card,
@@ -15,12 +16,34 @@ import {
 
 import type { Nivel, Objetivo, SesionResumen } from '../../src/domain/types'
 import { useConfiguracionStore } from '../../src/store/configuracion.store'
+import type { Tema } from '../../src/store/configuracion.store'
 import { useRutinasStore } from '../../src/store/rutinas.store'
 import { LIMITE_SESIONES_DETALLE, useSesionStore } from '../../src/store/sesion.store'
 import {
   calcularMejor1RMSesiones,
   calcularVolumenTotalSesiones,
 } from '../../src/store/selectores'
+
+type NombreIcono = ComponentProps<typeof Ionicons>['name']
+
+/** Ciclo del toggle de tema: sistema → claro → oscuro → sistema. */
+const SIGUIENTE_TEMA: Record<Tema, Tema> = {
+  sistema: 'claro',
+  claro: 'oscuro',
+  oscuro: 'sistema',
+}
+
+const ETIQUETAS_TEMA: Record<Tema, string> = {
+  sistema: 'Sistema',
+  claro: 'Claro',
+  oscuro: 'Oscuro',
+}
+
+const ICONOS_TEMA: Record<Tema, NombreIcono> = {
+  sistema: 'contrast',
+  claro: 'sunny',
+  oscuro: 'moon',
+}
 
 const ETIQUETAS_OBJETIVO: Record<Objetivo, string> = {
   hipertrofia: 'Hipertrofia',
@@ -147,6 +170,8 @@ function BotonAccion({ icono, texto, alPulsar, colorIcono }: BotonAccionProps) {
  */
 export default function DashboardScreen() {
   const usuario = useConfiguracionStore((s) => s.usuarioActivo)
+  const temaPreferido = useConfiguracionStore((s) => s.tema)
+  const cambiarTema = useConfiguracionStore((s) => s.cambiarTema)
 
   const rutinas = useRutinasStore((s) => s.rutinas)
   const cargandoRutinas = useRutinasStore((s) => s.cargando)
@@ -196,7 +221,7 @@ export default function DashboardScreen() {
     return (
       <YStack
         flex={1}
-        background="$background"
+        backgroundColor="$background"
         justifyContent="center"
         alignItems="center"
         gap="$4"
@@ -208,7 +233,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView background="$background">
+    <ScrollView backgroundColor="$background">
       <YStack padding="$4" paddingBottom="$6" gap="$4">
         {error ? (
           <Card size="$4" backgroundColor="$red5" borderWidth={1} borderColor="$red8" padding="$3">
@@ -229,33 +254,45 @@ export default function DashboardScreen() {
         ) : null}
 
         {/* ── Usuario ─────────────────────────────────────────────── */}
-        <YStack gap="$1">
-          <Text fontSize="$2" color="$gray10">
-            {saludoSegunHora()},
-          </Text>
-          <Text fontSize="$8" fontWeight="bold" color="$color">
-            {usuario?.nombre ?? 'Atleta'}
-          </Text>
-          {usuario?.objetivo || usuario?.nivel || usuario?.peso_inicial != null ? (
-            <XStack gap="$2" marginTop="$1" flexWrap="wrap">
-              {usuario?.objetivo ? (
-                <Text fontSize="$2" color="$gray11">
-                  {ETIQUETAS_OBJETIVO[usuario.objetivo]}
-                </Text>
-              ) : null}
-              {usuario?.nivel ? (
-                <Text fontSize="$2" color="$gray11">
-                  {ETIQUETAS_NIVEL[usuario.nivel]}
-                </Text>
-              ) : null}
-              {usuario?.peso_inicial != null ? (
-                <Text fontSize="$2" color="$gray11">
-                  {usuario.peso_inicial} kg
-                </Text>
-              ) : null}
-            </XStack>
-          ) : null}
-        </YStack>
+        <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
+          <YStack gap="$1" flex={1}>
+            <Text fontSize="$2" color="$gray10">
+              {saludoSegunHora()},
+            </Text>
+            <Text fontSize="$8" fontWeight="bold" color="$color">
+              {usuario?.nombre ?? 'Atleta'}
+            </Text>
+            {usuario?.objetivo || usuario?.nivel || usuario?.peso_inicial != null ? (
+              <XStack gap="$2" marginTop="$1" flexWrap="wrap">
+                {usuario?.objetivo ? (
+                  <Text fontSize="$2" color="$gray11">
+                    {ETIQUETAS_OBJETIVO[usuario.objetivo]}
+                  </Text>
+                ) : null}
+                {usuario?.nivel ? (
+                  <Text fontSize="$2" color="$gray11">
+                    {ETIQUETAS_NIVEL[usuario.nivel]}
+                  </Text>
+                ) : null}
+                {usuario?.peso_inicial != null ? (
+                  <Text fontSize="$2" color="$gray11">
+                    {usuario.peso_inicial} kg
+                  </Text>
+                ) : null}
+              </XStack>
+            ) : null}
+          </YStack>
+          <Button
+            size="$3"
+            circular
+            borderWidth={1}
+            borderColor="$borderColor"
+            backgroundColor="transparent"
+            icon={<Ionicons name={ICONOS_TEMA[temaPreferido]} size={18} color={tema.color?.val} />}
+            onPress={() => cambiarTema(SIGUIENTE_TEMA[temaPreferido])}
+            aria-label={`Tema: ${ETIQUETAS_TEMA[temaPreferido]}. Toca para cambiar.`}
+          />
+        </XStack>
 
         {/* ── Rutina activa ───────────────────────────────────────── */}
         <Card size="$4" borderWidth={1} borderColor="$borderColor" padding="$4" gap="$3">

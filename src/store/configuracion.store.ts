@@ -1,8 +1,8 @@
 /**
  * Store de configuración global de la app.
  *
- * Maneja el tema (claro/oscuro) y el usuario activo.
- * No persiste en BD directamente; el usuario se carga/crea via repositorio.
+ * Maneja el tema (sistema/claro/oscuro, persistido) y el usuario activo.
+ * El usuario se carga/crea via repositorio.
  */
 
 import { create } from 'zustand'
@@ -12,7 +12,8 @@ import type { Usuario, Objetivo, Nivel, Sexo } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import { obtenerUsuarioPorId, crearUsuario } from '../db/repositories/usuario.repository'
 
-export type Tema = 'claro' | 'oscuro'
+/** Preferencia de tema: seguir al sistema o forzar claro/oscuro. */
+export type Tema = 'sistema' | 'claro' | 'oscuro'
 
 export interface ConfiguracionEstado extends EstadoCarga {
   tema: Tema
@@ -30,7 +31,10 @@ export interface ConfiguracionEstado extends EstadoCarga {
   limpiarUsuario: () => void
 }
 
-const TEMA_POR_DEFECTO: Tema = 'claro'
+/** Versión del esquema persistido; la migración 1→2 introduce `sistema`. */
+const VERSION_PERSISTENCIA = 2
+
+const TEMA_POR_DEFECTO: Tema = 'sistema'
 
 export const useConfiguracionStore = create<ConfiguracionEstado>()(
   persist(
@@ -78,6 +82,14 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
     }),
     {
       name: 'gymfor-configuracion',
+      version: VERSION_PERSISTENCIA,
+      /** v1 persistía `claro` por defecto sin haber toggle: se resetea a `sistema`. */
+      migrate: (persistido: unknown, version: number) => {
+        if (version < 2 && persistido && typeof persistido === 'object') {
+          return { ...(persistido as Record<string, unknown>), tema: 'sistema' as Tema }
+        }
+        return persistido as { tema?: Tema }
+      },
       storage: createJSONStorage(() => ({
         getItem: (name) => {
           try {
