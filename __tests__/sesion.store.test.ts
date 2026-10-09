@@ -5,6 +5,7 @@ import { useSesionStore, LIMITE_SESIONES_DETALLE } from '../src/store/sesion.sto
 jest.mock('../src/db/repositories/sesion.repository', () => ({
   crearSesion: jest.fn(),
   agregarSerie: jest.fn(),
+  eliminarSesion: jest.fn(),
   obtenerSesionDetalle: jest.fn(),
   listarSesionesPorUsuario: jest.fn(),
 }))
@@ -17,7 +18,13 @@ jest.mock('../src/db/client', () => ({
   obtenerBD: jest.fn(),
 }))
 
-import { crearSesion, agregarSerie, obtenerSesionDetalle, listarSesionesPorUsuario } from '../src/db/repositories/sesion.repository'
+import {
+  crearSesion,
+  agregarSerie,
+  eliminarSesion,
+  obtenerSesionDetalle,
+  listarSesionesPorUsuario,
+} from '../src/db/repositories/sesion.repository'
 import { obtenerRutinaDetalle } from '../src/db/repositories/rutina.repository'
 import { obtenerBD } from '../src/db/client'
 
@@ -284,12 +291,72 @@ describe('useSesionStore', () => {
         error: 'algun error',
       })
 
-      act(() => {
+      await act(async () => {
         result.current.cancelarSesion()
       })
 
       expect(result.current.sesionActual).toBeNull()
       expect(result.current.error).toBeNull()
+    })
+  })
+
+  describe('descartarSesion', () => {
+    it('éxito: elimina la sesión en BD (con CASCADE) y limpia sesionActual', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSesion as jest.Mock).mockResolvedValue(undefined)
+
+      const { result } = await renderHook(() => useSesionStore())
+      useSesionStore.setState({
+        sesionActual: {
+          sesion: mockSesionBase,
+          registros: [],
+          rutina_nombre: 'Rutina',
+          nombre_dia: 'Dia 1',
+        },
+      })
+
+      await act(async () => {
+        await result.current.descartarSesion()
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(eliminarSesion).toHaveBeenCalledWith({}, 's1')
+      expect(result.current.sesionActual).toBeNull()
+      expect(result.current.error).toBeNull()
+    })
+
+    it('sin sesión activa: setea error sin tocar la BD', async () => {
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.descartarSesion()
+      })
+
+      expect(result.current.error).toBe('No hay sesión activa para descartar')
+      expect(eliminarSesion).not.toHaveBeenCalled()
+    })
+
+    it('error: el repo rechaza -> la sesión sigue en curso y el error queda visible', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSesion as jest.Mock).mockRejectedValue(new Error('DB locked'))
+
+      const { result } = await renderHook(() => useSesionStore())
+      useSesionStore.setState({
+        sesionActual: {
+          sesion: mockSesionBase,
+          registros: [],
+          rutina_nombre: 'Rutina',
+          nombre_dia: 'Dia 1',
+        },
+      })
+
+      await act(async () => {
+        await result.current.descartarSesion()
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.sesionActual).not.toBeNull()
+      expect(result.current.error).toBe('DB locked')
     })
   })
 })

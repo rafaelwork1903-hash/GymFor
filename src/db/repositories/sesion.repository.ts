@@ -189,3 +189,12 @@ export async function agregarSerie(
   )
   return { ...serie, id, registro_id: registroId }
 }
+
+/**
+ * Elimina una sesión completa de la base de datos.
+ * Las FK `ON DELETE CASCADE` borran automáticamente sus registros y series
+ * (a diferencia de dejar la fila huérfana).
+ */
+export async function eliminarSesion(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync('DELETE FROM sesiones WHERE id = ?', [id])
+}

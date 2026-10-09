@@ -19,6 +19,7 @@ import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import {
   crearSesion,
   agregarSerie,
+  eliminarSesion,
   obtenerSesionDetalle,
   listarSesionesPorUsuario,
 } from '../db/repositories/sesion.repository'
@@ -63,6 +64,11 @@ export interface SesionEstado extends EstadoCarga {
     notas?: string
     rpe_sesion?: number
   }) => Promise<void>
+  /**
+   * Descarta la sesión en curso: la elimina de la BD (con sus registros y
+   * series vía CASCADE). A diferencia de `cancelarSesion`, no deja fila huérfana.
+   */
+  descartarSesion: () => Promise<void>
   cancelarSesion: () => void
   cargarHistorial: (usuarioId: string, rango?: { desde?: string; hasta?: string }) => Promise<void>
   limpiarError: () => void
@@ -250,6 +256,18 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   },
 
   cancelarSesion: () => set({ sesionActual: null, error: null }),
+
+  descartarSesion: async () => {
+    const { sesionActual } = get()
+    if (!sesionActual) {
+      set({ error: 'No hay sesión activa para descartar' })
+      return
+    }
+    await ejecutarAccion(set, async (db) => {
+      await eliminarSesion(db, sesionActual.sesion.id)
+      return sesionActual.sesion.id
+    }, () => ({ sesionActual: null }))
+  },
 
   cargarHistorial: async (usuarioId, rango) => {
     await ejecutarAccion(set, async (db) => {
