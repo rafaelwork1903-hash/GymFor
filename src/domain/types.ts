@@ -208,6 +208,12 @@ export interface NuevaRutina {
 export interface NuevaSesion {
   sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
   registros: Array<{
+    /**
+     * ID del registro generado por el CALLER. El repositorio lo usa tal cual
+     * en BD para que la sesión en curso referencie los mismos IDs que el
+     * store (los inserts de series dependen de esta FK).
+     */
+    id: string
     ejercicio_id: string
     rpe_ejercicio: number | null
     series: Array<Omit<SerieReal, 'id' | 'registro_id'>>

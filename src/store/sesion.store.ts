@@ -126,7 +126,11 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           notas: null,
           rpe_sesion: null,
         },
+        // Los IDs de registro los genera este store y el repositorio los
+        // inserta tal cual: `sesionActual.registros[].registro_id` coincide
+        // con las filas reales de BD (FK de `series.registro_id`).
         registros: registros.map((r) => ({
+          id: r.registro_id,
           ejercicio_id: r.ejercicio_id,
           rpe_ejercicio: null,
           series: [],

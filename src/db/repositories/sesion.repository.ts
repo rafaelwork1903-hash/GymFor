@@ -28,6 +28,8 @@ export type SesionDetalle = SesionEntrenamiento & {
 export interface NuevaSesion {
   sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
   registros: {
+    /** ID generado por el caller (store): BD y sesión en curso lo comparten. */
+    id: string
     ejercicio_id: string
     rpe_ejercicio: number | null
     series: Omit<SerieReal, 'id' | 'registro_id'>[]
@@ -105,8 +107,9 @@ export async function obtenerSesionDetalle(
 
 /**
  * Persiste una sesión completa (registros + series) en una sola transacción.
- * Flujo crítico "registrar serie": cada serie se inserta con este mismo
- * repositorio dentro de la sesión activa.
+ * Los IDs de los registros los trae el caller (`NuevaSesion.registros[].id`):
+ * se insertan tal cual para que la sesión en curso del store referencie los
+ * mismos IDs que existen en BD (los inserts de series dependen de esta FK).
  */
 export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promise<SesionEntrenamiento> {
   const ahora = ahoraISO()
@@ -131,11 +134,10 @@ export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promi
     )
 
     for (const registro of nueva.registros) {
-      const registroId = generarId()
       await txn.runAsync(
         `INSERT INTO registros_ejercicio (id, sesion_id, ejercicio_id, rpe_ejercicio)
          VALUES (?, ?, ?, ?)`,
-        [registroId, nueva.sesion.id, registro.ejercicio_id, registro.rpe_ejercicio],
+        [registro.id, nueva.sesion.id, registro.ejercicio_id, registro.rpe_ejercicio],
       )
 
       for (const serie of registro.series) {
@@ -146,7 +148,7 @@ export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promi
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             generarId(),
-            registroId,
+            registro.id,
             serie.numero_serie,
             serie.peso_levantado,
             serie.reps_realizadas,

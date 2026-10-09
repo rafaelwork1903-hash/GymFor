@@ -4,6 +4,7 @@ import { useConfiguracionStore } from '../src/store/configuracion.store'
 
 jest.mock('../src/db/repositories/usuario.repository', () => ({
   obtenerUsuarioPorId: jest.fn(),
+  listarUsuarios: jest.fn(),
   crearUsuario: jest.fn(),
 }))
 
@@ -11,7 +12,11 @@ jest.mock('../src/db/client', () => ({
   obtenerBD: jest.fn(),
 }))
 
-import { obtenerUsuarioPorId, crearUsuario } from '../src/db/repositories/usuario.repository'
+import {
+  obtenerUsuarioPorId,
+  listarUsuarios,
+  crearUsuario,
+} from '../src/db/repositories/usuario.repository'
 import { obtenerBD } from '../src/db/client'
 
 describe('useConfiguracionStore', () => {
@@ -155,6 +160,58 @@ describe('useConfiguracionStore', () => {
       })
 
       expect(result.current.usuarioActivo).toBeNull()
+      expect(result.current.error).toBeNull()
+    })
+  })
+
+  describe('asegurarUsuario', () => {
+    it('con usuarioActivo ya presente no toca la BD', async () => {
+      const { result } = await renderHook(() => useConfiguracionStore())
+      useConfiguracionStore.setState({ usuarioActivo: { id: 'u1', nombre: 'Test' } as any })
+
+      await act(async () => {
+        await result.current.asegurarUsuario()
+      })
+
+      expect(listarUsuarios).not.toHaveBeenCalled()
+      expect(crearUsuario).not.toHaveBeenCalled()
+    })
+
+    it('sin usuario activo y con usuarios en BD: adopta al primero sin crear otro', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarUsuarios as jest.Mock).mockResolvedValue([
+        { id: 'u-viejo', nombre: 'Atleta' },
+        { id: 'u-otro', nombre: 'Segundo' },
+      ])
+
+      const { result } = await renderHook(() => useConfiguracionStore())
+
+      await act(async () => {
+        await result.current.asegurarUsuario()
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.usuarioActivo?.id).toBe('u-viejo')
+      expect(crearUsuario).not.toHaveBeenCalled()
+      expect(result.current.error).toBeNull()
+    })
+
+    it('con la BD vacía: crea el usuario inicial y lo deja activo', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarUsuarios as jest.Mock).mockResolvedValue([])
+      ;(crearUsuario as jest.Mock).mockImplementation((_db, usuario) =>
+        Promise.resolve(usuario),
+      )
+
+      const { result } = await renderHook(() => useConfiguracionStore())
+
+      await act(async () => {
+        await result.current.asegurarUsuario()
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(crearUsuario).toHaveBeenCalledTimes(1)
+      expect(result.current.usuarioActivo?.nombre).toBe('Atleta')
       expect(result.current.error).toBeNull()
     })
   })

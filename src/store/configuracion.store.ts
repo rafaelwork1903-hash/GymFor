@@ -10,10 +10,17 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 
 import type { Usuario, Objetivo, Nivel, Sexo } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import { obtenerUsuarioPorId, crearUsuario } from '../db/repositories/usuario.repository'
+import {
+  obtenerUsuarioPorId,
+  listarUsuarios,
+  crearUsuario,
+} from '../db/repositories/usuario.repository'
 
 /** Preferencia de tema: seguir al sistema o forzar claro/oscuro. */
 export type Tema = 'sistema' | 'claro' | 'oscuro'
+
+/** Nombre del usuario que se autocrea mientras no exista onboarding. */
+export const NOMBRE_USUARIO_INICIAL = 'Atleta'
 
 export interface ConfiguracionEstado extends EstadoCarga {
   tema: Tema
@@ -28,6 +35,13 @@ export interface ConfiguracionEstado extends EstadoCarga {
     objetivo?: Objetivo
     nivel?: Nivel
   }) => Promise<void>
+  /**
+   * Garantiza un `usuarioActivo`: reutiliza el primer usuario de la BD
+   * (idempotente entre arranques; el estado no persiste al usuario en
+   * nativo) o crea el usuario inicial si la BD está vacía. Sin esto,
+   * `sesiones.usuario_id NOT NULL` haría fallar `iniciarSesion`.
+   */
+  asegurarUsuario: () => Promise<void>
   limpiarUsuario: () => void
 }
 
@@ -38,7 +52,7 @@ const TEMA_POR_DEFECTO: Tema = 'sistema'
 
 export const useConfiguracionStore = create<ConfiguracionEstado>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       tema: TEMA_POR_DEFECTO,
       usuarioActivo: null,
       cargando: false,
@@ -75,6 +89,20 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
           await crearUsuario(db, nuevoUsuario)
           return nuevoUsuario
         }, (usuario) => ({ usuarioActivo: usuario }))
+      },
+
+      asegurarUsuario: async () => {
+        // Idempotente: si ya hay usuario activo no toca la BD.
+        if (get().usuarioActivo) {
+          return
+        }
+        await ejecutarAccion(set, async (db) => {
+          const existentes = await listarUsuarios(db)
+          return existentes[0] ?? null
+        }, (usuario) => (usuario ? { usuarioActivo: usuario } : {}))
+        if (!get().usuarioActivo) {
+          await get().crearUsuarioInicial({ nombre: NOMBRE_USUARIO_INICIAL })
+        }
       },
 
       limpiarUsuario: () =>

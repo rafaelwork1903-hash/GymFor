@@ -19,12 +19,23 @@ export default function RootLayout() {
   // Tema de la app: preferencia del usuario (persistida) con fallback al
   // esquema del sistema. `TamaguiProvider` lo aplica dinámicamente.
   const temaPreferido = useConfiguracionStore((s) => s.tema)
+  const usuarioActivo = useConfiguracionStore((s) => s.usuarioActivo)
+  const asegurarUsuario = useConfiguracionStore((s) => s.asegurarUsuario)
   const temaResuelto =
     temaPreferido === 'oscuro'
       ? 'dark'
       : temaPreferido === 'claro'
         ? 'light'
         : (colorScheme ?? 'light')
+
+  // Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
+  // `usuarios`, así que sin usuario activo no se puede entrenar. La acción
+  // es idempotente (reutiliza el primer usuario de la BD o crea el inicial).
+  useEffect(() => {
+    if (!usuarioActivo) {
+      void asegurarUsuario()
+    }
+  }, [usuarioActivo, asegurarUsuario])
 
   const [fontsLoaded, fontError] = useFonts({
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),

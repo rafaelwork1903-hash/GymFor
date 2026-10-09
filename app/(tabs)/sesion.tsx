@@ -448,14 +448,16 @@ export default function SesionScreen() {
   )
 
   const iniciar = async () => {
-    if (!rutinaActiva || !diaElegido) {
+    // `sesiones.usuario_id` es NOT NULL con FK: sin usuario activo el INSERT
+    // fallaría (el bootstrap del root layout lo garantiza en la práctica).
+    if (!rutinaActiva || !diaElegido || !usuarioId) {
       return
     }
     setSesionTerminada(null)
     await iniciarSesion({
       rutinaId: rutinaActiva.id,
       diaRutinaId: diaElegido,
-      usuarioId: usuarioId ?? '',
+      usuarioId,
     })
   }
 
@@ -495,8 +497,18 @@ export default function SesionScreen() {
     ])
   }
 
-  const recargar = () => {
+  /**
+   * Reintento contextual: si falló el arranque de la sesión (día elegido y
+   * sin sesión en curso), se reintenta ESA operación; si no, se recargan las
+   * rutinas y se limpia el error (las series/finalizar se reintentan con sus
+   * propios botones).
+   */
+  const reintentar = () => {
     limpiarError()
+    if (!sesionActual && diaElegido && rutinaActiva && usuarioId && errorSesion) {
+      void iniciar()
+      return
+    }
     void cargarRutinas(usuarioId)
   }
 
@@ -511,7 +523,7 @@ export default function SesionScreen() {
             {error}
           </Text>
         </YStack>
-        <Button size="$2" borderColor="$red8" onPress={recargar}>
+        <Button size="$2" borderColor="$red8" onPress={reintentar}>
           Reintentar
         </Button>
       </XStack>
@@ -759,12 +771,17 @@ export default function SesionScreen() {
             color="$gray1"
             fontWeight="bold"
             pressStyle={{ opacity: 0.85 }}
-            disabled={!diaElegido || cargando}
+            disabled={!diaElegido || cargando || !usuarioId}
             icon={<Ionicons name="play-circle" size={18} color={tema.gray1?.val} />}
             onPress={() => void iniciar()}
           >
             {cargando ? 'Iniciando…' : 'Iniciar entrenamiento'}
           </Button>
+          {!usuarioId ? (
+            <Text fontSize="$1" color="$gray9" textAlign="center" marginTop="$2">
+              Preparando tu perfil de usuario…
+            </Text>
+          ) : null}
         </YStack>
       ) : null}
     </YStack>
