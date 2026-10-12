@@ -172,23 +172,31 @@ export async function actualizarRutina(
 }
 
 /**
- * Marca una rutina como activa para el usuario y desactiva el resto.
+ * Marca una rutina como activa y desactiva TODAS las demás (plantillas
+ * incluidas): la invariante de la app es que a lo sumo haya UNA rutina
+ * activa, así que la desactivación es global y no por usuario.
  */
 export async function activarRutina(
   db: SQLiteDatabase,
   rutinaId: string,
   usuarioId: string,
 ): Promise<void> {
+  void usuarioId // la desactivación es global: solo puede haber una activa
   await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync(
-      'UPDATE rutinas SET activa = 0, actualizado_en = ? WHERE usuario_id = ?',
-      [ahoraISO(), usuarioId],
-    )
+    await txn.runAsync('UPDATE rutinas SET activa = 0, actualizado_en = ?', [ahoraISO()])
     await txn.runAsync(
       'UPDATE rutinas SET activa = 1, actualizado_en = ?, sincronizado = 0 WHERE id = ?',
       [ahoraISO(), rutinaId],
     )
   })
+}
+
+/** Desactiva una rutina (activa = 0). Llamarla la deja sin rutina activa. */
+export async function desactivarRutina(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync(
+    'UPDATE rutinas SET activa = 0, actualizado_en = ?, sincronizado = 0 WHERE id = ?',
+    [ahoraISO(), id],
+  )
 }
 
 export async function eliminarRutina(db: SQLiteDatabase, id: string): Promise<void> {

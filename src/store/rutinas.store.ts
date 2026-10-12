@@ -15,6 +15,7 @@ import {
   crearRutina,
   actualizarRutina,
   activarRutina,
+  desactivarRutina,
   eliminarRutina,
 } from '../db/repositories/rutina.repository'
 
@@ -26,6 +27,8 @@ export interface RutinasEstado extends EstadoCarga {
   crearRutinaNueva: (rutina: NuevaRutina) => Promise<Rutina | undefined>
   actualizarRutinaExistente: (id: string, cambios: Partial<Pick<Rutina, 'nombre' | 'descripcion'>>) => Promise<void>
   activarRutinaSeleccionada: (usuarioId: string) => Promise<void>
+  /** Desactiva una rutina (la activa=1). Tras llamarla no hay rutina activa. */
+  desactivarRutinaPorId: (id: string) => Promise<void>
   eliminarRutinaPorId: (id: string) => Promise<void>
   limpiarSeleccion: () => void
 }
@@ -100,6 +103,22 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
     }, () => {
       const rutinas = get().rutinas.filter((r) => r.id !== id)
       const rutinaSeleccionada = get().rutinaSeleccionada?.id === id ? null : get().rutinaSeleccionada
+      return { rutinas, rutinaSeleccionada }
+    })
+  },
+
+  desactivarRutinaPorId: async (id) => {
+    await ejecutarAccion(set, async (db) => {
+      await desactivarRutina(db, id)
+      return id
+    }, () => {
+      const rutinas = get().rutinas.map((r) =>
+        r.id === id ? { ...r, activa: 0 as const } : r,
+      )
+      const rutinaSeleccionada =
+        get().rutinaSeleccionada?.id === id
+          ? { ...get().rutinaSeleccionada!, activa: 0 as const }
+          : get().rutinaSeleccionada
       return { rutinas, rutinaSeleccionada }
     })
   },
