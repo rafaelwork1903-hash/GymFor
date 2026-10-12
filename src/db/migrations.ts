@@ -82,6 +82,23 @@ export async function repararVersionInconsistente(db: SQLiteDatabase): Promise<v
 }
 
 /**
+ * Reparación de datos: garantiza la invariante "a lo sumo una rutina
+ * activa". Versiones antiguas de `activarRutina` solo desactivaban las
+ * rutinas del usuario, así que una plantilla podía quedar activa junto a
+ * otra propia. Conserva activa la más recientemente actualizada.
+ * Idempotente: se ejecuta al arrancar (`inicializarBD`).
+ */
+export async function repararRutinasActivasMultiples(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    UPDATE rutinas SET activa = 0, sincronizado = 0
+    WHERE activa = 1 AND id NOT IN (
+      SELECT id FROM rutinas WHERE activa = 1
+      ORDER BY actualizado_en DESC, id LIMIT 1
+    )
+  `)
+}
+
+/**
  * Migra la base de datos a `versionObjetivo` aplicando migraciones `up` (si
  * hay que subir) o `down` (si hay que bajar). Devuelve la versión resultante.
  */

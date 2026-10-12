@@ -24,18 +24,23 @@ interface TarjetaRutinaProps {
   /** Deshabilita las acciones mientras hay una operación en curso. */
   ocupado: boolean
   colorIcono: string | undefined
+  /** Color del icono del botón transparente (outline, tema actual). */
+  colorIconoNeutro: string | undefined
   colorIconoError: string | undefined
   onActivar: (rutina: Rutina) => void
+  onDesactivar: (rutina: Rutina) => void
   onEliminar: (rutina: Rutina) => void
 }
 
-/** Tarjeta de rutina: resalta la activa y expone activar/eliminar. */
+/** Tarjeta de rutina: resalta la activa y expone activar/desactivar/eliminar. */
 function TarjetaRutina({
   rutina,
   ocupado,
   colorIcono,
+  colorIconoNeutro,
   colorIconoError,
   onActivar,
+  onDesactivar,
   onEliminar,
 }: TarjetaRutinaProps) {
   const activa = rutina.activa === 1
@@ -75,7 +80,22 @@ function TarjetaRutina({
       </XStack>
 
       <XStack gap="$2" marginTop="$1">
-        {activa ? null : (
+        {activa ? (
+          // Solo puede haber una rutina activa; la activa ofrece Desactivar.
+          <Button
+            size="$3"
+            flex={1}
+            backgroundColor="transparent"
+            borderWidth={1}
+            borderColor="$borderColor"
+            color="$color"
+            disabled={ocupado}
+            icon={<Ionicons name="pause-circle-outline" size={16} color={colorIconoNeutro} />}
+            onPress={() => onDesactivar(rutina)}
+          >
+            Desactivar
+          </Button>
+        ) : (
           <Button
             size="$3"
             flex={1}
@@ -248,6 +268,7 @@ export default function RutinasScreen() {
   const activarRutinaSeleccionada = useRutinasStore((s) => s.activarRutinaSeleccionada)
   const crearRutinaNueva = useRutinasStore((s) => s.crearRutinaNueva)
   const eliminarRutinaPorId = useRutinasStore((s) => s.eliminarRutinaPorId)
+  const desactivarRutinaPorId = useRutinasStore((s) => s.desactivarRutinaPorId)
 
   const tema = useTheme()
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -270,6 +291,11 @@ export default function RutinasScreen() {
       return
     }
     await activarRutinaSeleccionada(usuarioId ?? '')
+  }
+
+  // Desactivar no es destructivo: no necesita confirmación.
+  const desactivar = (rutina: Rutina) => {
+    void desactivarRutinaPorId(rutina.id)
   }
 
   const confirmarEliminar = (rutina: Rutina) => {
@@ -376,8 +402,10 @@ export default function RutinasScreen() {
                 rutina={rutina}
                 ocupado={cargando}
                 colorIcono={tema.gray1?.val}
+                colorIconoNeutro={tema.color?.val}
                 colorIconoError={tema.red11?.val}
                 onActivar={activar}
+                onDesactivar={desactivar}
                 onEliminar={confirmarEliminar}
               />
             ))}

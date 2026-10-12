@@ -9,7 +9,7 @@
 
 import * as SQLite from 'expo-sqlite'
 
-import { migrarALaUltimaVersion, repararVersionInconsistente } from './migrations'
+import { migrarALaUltimaVersion, repararVersionInconsistente, repararRutinasActivasMultiples } from './migrations'
 import { sembrarDatosIniciales } from './seed'
 
 export const NOMBRE_BD = 'gymfor.db'
@@ -38,4 +38,6 @@ export async function inicializarBD(db: SQLite.SQLiteDatabase): Promise<void> {
   await repararVersionInconsistente(db)
   await migrarALaUltimaVersion(db)
   await sembrarDatosIniciales(db)
+  // Reparación de datos (idempotente): a lo sumo una rutina activa.
+  await repararRutinasActivasMultiples(db)
 }

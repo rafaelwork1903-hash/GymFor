@@ -48,6 +48,10 @@
     "preset": "jest-expo",
     "setupFilesAfterEnv": [
       "<rootDir>/jest-setup.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/helpers/"
     ]
   },
   "private": true,

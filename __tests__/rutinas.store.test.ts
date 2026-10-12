@@ -8,6 +8,7 @@ jest.mock('../src/db/repositories/rutina.repository', () => ({
   crearRutina: jest.fn(),
   actualizarRutina: jest.fn(),
   activarRutina: jest.fn(),
+  desactivarRutina: jest.fn(),
   eliminarRutina: jest.fn(),
 }))
 
@@ -21,6 +22,7 @@ import {
   crearRutina,
   actualizarRutina,
   activarRutina,
+  desactivarRutina,
   eliminarRutina,
 } from '../src/db/repositories/rutina.repository'
 import { obtenerBD } from '../src/db/client'
@@ -240,6 +242,50 @@ describe('useRutinasStore', () => {
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.rutinas).toEqual([])
       expect(result.current.rutinaSeleccionada).toBeNull()
+    })
+  })
+
+  describe('desactivarRutinaPorId', () => {
+    it('éxito: quita activa=1 solo de esa rutina y persiste la desactivación', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(desactivarRutina as jest.Mock).mockResolvedValue(undefined)
+
+      const { result } = await renderHook(() => useRutinasStore())
+      useRutinasStore.setState({
+        rutinas: [
+          { ...mockRutina, activa: 1 as const },
+          { ...mockRutina, id: 'r2', nombre: 'Otra', activa: 0 as const },
+        ],
+      })
+
+      await act(async () => {
+        await result.current.desactivarRutinaPorId('r1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(desactivarRutina).toHaveBeenCalledWith({}, 'r1')
+      expect(result.current.rutinas.find((r) => r.id === 'r1')?.activa).toBe(0)
+      expect(result.current.rutinas.find((r) => r.id === 'r2')?.activa).toBe(0)
+      expect(result.current.rutinas.filter((r) => r.activa === 1)).toHaveLength(0)
+      expect(result.current.error).toBeNull()
+    })
+
+    it('error: repo rechaza -> error seteado y lista intacta', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(desactivarRutina as jest.Mock).mockRejectedValue(new Error('DB bloqueada'))
+
+      const { result } = await renderHook(() => useRutinasStore())
+      useRutinasStore.setState({
+        rutinas: [{ ...mockRutina, activa: 1 as const }],
+      })
+
+      await act(async () => {
+        await result.current.desactivarRutinaPorId('r1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.rutinas.find((r) => r.id === 'r1')?.activa).toBe(1)
+      expect(result.current.error).toBe('DB bloqueada')
     })
   })
 
