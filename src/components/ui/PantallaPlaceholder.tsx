@@ -17,7 +17,7 @@ export function PantallaPlaceholder({ titulo, descripcion }: PantallaPlaceholder
       justifyContent="center"
       alignItems="center"
       gap="$4"
-      background="$background"
+      backgroundColor="$background"
     >
       <H2 textAlign="center">{titulo}</H2>
       <Paragraph textAlign="center" color="$gray10" fontSize="$4">

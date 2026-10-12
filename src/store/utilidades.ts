@@ -25,6 +25,15 @@ export function mensajeDeError(error: unknown): string {
   if (error instanceof Error) {
     return error.message
   }
+  // Errores que cruzan fronteras de VM (jest, workers) no pasan el
+  // `instanceof Error` pero conservan un `message` legible (p. ej. los de
+  // SQLite: "FOREIGN KEY constraint failed").
+  if (typeof error === 'object' && error !== null) {
+    const mensaje = (error as { message?: unknown }).message
+    if (typeof mensaje === 'string' && mensaje.length > 0) {
+      return mensaje
+    }
+  }
   if (typeof error === 'string') {
     return error
   }

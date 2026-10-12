@@ -310,7 +310,7 @@ export default function RutinasScreen() {
     return (
       <YStack
         flex={1}
-        background="$background"
+        backgroundColor="$background"
         justifyContent="center"
         alignItems="center"
         gap="$4"
@@ -322,7 +322,7 @@ export default function RutinasScreen() {
   }
 
   return (
-    <YStack flex={1} background="$background">
+    <YStack flex={1} backgroundColor="$background">
       {/* Zona fija: banner de error y botón de creación fuera del scroll. */}
       <YStack padding="$4" paddingBottom="$2" gap="$3">
         {error ? (
