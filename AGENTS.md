@@ -141,4 +141,4 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Reparación de BD ya dañadas**: `repararRutinasActivasMultiples` en `src/db/migrations.ts` (conserva activa la más recientemente actualizada), ejecutada en `inicializarBD` al arranque tras migrar + sembrar. Idempotente.
 - Infra de tests: el adaptador `node:sqlite` se extrae a `__tests__/helpers/sqlite-adapter.ts` (compartido, con `execAsync` para DDL/PRAGMA/reparaciones) y se excluye de jest con `testPathIgnorePatterns` (`/__tests__/helpers/`).
 - Tests: `desactivarRutinaPorId` (éxito/error) en `rutinas.store.test.ts` + nueva suite de integración `integracion.rutinas.test.ts` sobre SQLite real: activar plantilla→otra deja UNA activa en BD y store (regresión del bug), desactivar deja CERO, reparación de arranque corrige BDs con dos activas.
-- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings nuevos en src), `bun run test` 13/13 suites y 106/106 tests ✅.
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings nuevos en src), `bun run test` 13/13 suites y 106/106 tests ✅ (tras fusionar main con el PR #19: 111/111 tests ✅).
