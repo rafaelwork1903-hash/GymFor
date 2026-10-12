@@ -51,6 +51,8 @@ export interface SesionEstado extends EstadoCarga {
   sesiones: SesionResumen[]
   /** Detalle (registros + series) de las últimas sesiones, para métricas. */
   sesionesDetalle: SesionDetalle[]
+  /** Detalles de sesiones antiguas cargadas bajo demanda (clave: sesion.id). */
+  detallesPorId: Record<string, SesionDetalle>
   iniciarSesion: (params: {
     rutinaId: string
     diaRutinaId: string
@@ -71,6 +73,11 @@ export interface SesionEstado extends EstadoCarga {
   descartarSesion: () => Promise<void>
   cancelarSesion: () => void
   cargarHistorial: (usuarioId: string, rango?: { desde?: string; hasta?: string }) => Promise<void>
+  /**
+   * Carga bajo demanda el detalle (registros + series) de una sesión antigua
+   * y lo cachea en `detallesPorId`. No recarga si ya está disponible.
+   */
+  cargarDetalleSesion: (id: string) => Promise<void>
   limpiarError: () => void
 }
 
@@ -92,6 +99,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   sesionActual: null,
   sesiones: [],
   sesionesDetalle: [],
+  detallesPorId: {},
   cargando: false,
   error: null,
 
@@ -285,6 +293,25 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       }
       return { sesiones, sesionesDetalle }
     }, (resultado) => resultado)
+  },
+
+  cargarDetalleSesion: async (id) => {
+    // Cache: si el detalle ya está en `detallesPorId` o en `sesionesDetalle`
+    // (últimas N sesiones), no se vuelve a la BD.
+    const yaCargado =
+      get().detallesPorId[id] ?? get().sesionesDetalle.find((d) => d.id === id)
+    if (yaCargado) {
+      return
+    }
+    await ejecutarAccion(set, async (db) => {
+      const detalle = await obtenerSesionDetalle(db, id)
+      if (!detalle) {
+        throw new Error(`Sesión no encontrada: ${id}`)
+      }
+      return detalle
+    }, (detalle) => ({
+      detallesPorId: { ...get().detallesPorId, [detalle.id]: detalle },
+    }))
   },
 
   limpiarError: () => set({ error: null }),

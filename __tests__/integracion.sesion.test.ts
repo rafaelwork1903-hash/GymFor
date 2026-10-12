@@ -217,4 +217,31 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
     expect(adaptador.leer('SELECT * FROM registros_ejercicio')).toHaveLength(0)
     expect(adaptador.leer('SELECT * FROM series')).toHaveLength(0)
   })
+
+  it('cargarDetalleSesion lee de la BD real lo que la app escribió (incluye series)', async () => {
+    const { iniciarSesion, agregarSerie, finalizarSesion, cargarDetalleSesion } =
+      useSesionStore.getState()
+    await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+    const sesionId = useSesionStore.getState().sesionActual?.sesion.id!
+    const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+    await agregarSerie(registroId, nuevaSerie(1))
+    await agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 62.5, reps_realizadas: 8 })
+    await finalizarSesion({ notas: 'muy buena', rpe_sesion: 8 })
+
+    // El detalle finalizado queda pre-cargado en sesionesDetalle (cache) — se
+    // limpia en memoria para forzar la lectura real desde la BD.
+    useSesionStore.setState({ sesionesDetalle: [], detallesPorId: {} })
+
+    await cargarDetalleSesion(sesionId)
+
+    const estado = useSesionStore.getState()
+    expect(estado.error).toBeNull()
+    const detalle = estado.detallesPorId[sesionId]
+    expect(detalle).toBeDefined()
+    expect(detalle.registros).toHaveLength(1)
+    // Series leídas desde BD (no del estado en curso): peso real + reps.
+    expect(detalle.registros[0].series).toHaveLength(2)
+    expect(detalle.registros[0].series[1].peso_levantado).toBe(62.5)
+    expect(detalle.registros[0].series[1].reps_realizadas).toBe(8)
+  })
 })

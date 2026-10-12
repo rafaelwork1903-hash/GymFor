@@ -35,6 +35,7 @@ describe('useSesionStore', () => {
       sesionActual: null,
       sesiones: [],
       sesionesDetalle: [],
+      detallesPorId: {},
       cargando: false,
       error: null,
     })
@@ -357,6 +358,68 @@ describe('useSesionStore', () => {
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.sesionActual).not.toBeNull()
       expect(result.current.error).toBe('DB locked')
+    })
+  })
+
+  describe('cargarDetalleSesion', () => {
+    it('éxito: guarda el detalle en detallesPorId tras ir a BD', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(mockSesionDetalle)
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetalleSesion('s1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(obtenerSesionDetalle).toHaveBeenCalledTimes(1)
+      expect(result.current.detallesPorId['s1']).toEqual(mockSesionDetalle)
+      expect(result.current.error).toBeNull()
+    })
+
+    it('cache: si el detalle ya está cargado no vuelve a la BD', async () => {
+      const { result } = await renderHook(() => useSesionStore())
+      useSesionStore.setState({
+        sesionesDetalle: [mockSesionDetalle],
+      })
+
+      await act(async () => {
+        await result.current.cargarDetalleSesion('s1')
+      })
+
+      expect(obtenerSesionDetalle).not.toHaveBeenCalled()
+      expect(result.current.error).toBeNull()
+    })
+
+    it('error: repo rechaza -> error seteado, sin detalle cargado', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockRejectedValue(new Error('detalle down'))
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetalleSesion('s1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.detallesPorId['s1']).toBeUndefined()
+      expect(result.current.error).toBe('detalle down')
+    })
+
+    it('sesión inexistente en BD: mapea el error del repositorio', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(null)
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetalleSesion('s-desconocida')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.error).toBe('Sesión no encontrada: s-desconocida')
+      expect(result.current.detallesPorId['s-desconocida']).toBeUndefined()
     })
   })
 })
