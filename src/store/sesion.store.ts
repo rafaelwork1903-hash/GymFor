@@ -45,12 +45,20 @@ interface SesionEnCurso {
 /** Nº de sesiones recientes cuyo detalle se carga para métricas/indicadores. */
 export const LIMITE_SESIONES_DETALLE = 5
 
+/** Nº de sesiones cuyo detalle se precarga para la pantalla de Progreso. */
+export const LIMITE_DETALLES_COMPLETOS = 30
+
 export interface SesionEstado extends EstadoCarga {
   sesionActual: SesionEnCurso | null
   /** Listado del historial con nombres de rutina/día resueltos. */
   sesiones: SesionResumen[]
   /** Detalle (registros + series) de las últimas sesiones, para métricas. */
   sesionesDetalle: SesionDetalle[]
+  /**
+   * Detalle (registros + series) de hasta `LIMITE_DETALLES_COMPLETOS`
+   * sesiones recientes, para métricas de progreso de largo plazo.
+   */
+  detallesCompletos: SesionDetalle[]
   /** Detalles de sesiones antiguas cargadas bajo demanda (clave: sesion.id). */
   detallesPorId: Record<string, SesionDetalle>
   iniciarSesion: (params: {
@@ -73,6 +81,13 @@ export interface SesionEstado extends EstadoCarga {
   descartarSesion: () => Promise<void>
   cancelarSesion: () => void
   cargarHistorial: (usuarioId: string, rango?: { desde?: string; hasta?: string }) => Promise<void>
+  /**
+   * Carga el detalle de hasta `limite` sesiones recientes (por defecto
+   * `LIMITE_DETALLES_COMPLETOS`) para la pantalla de Progreso. Reutiliza el
+   * cache (`sesionesDetalle` y `detallesPorId`) para no releer sesiones ya
+   * conocidas y cachea el resto en `detallesPorId`.
+   */
+  cargarDetallesCompletos: (usuarioId: string, limite?: number) => Promise<void>
   /**
    * Carga bajo demanda el detalle (registros + series) de una sesión antigua
    * y lo cachea en `detallesPorId`. No recarga si ya está disponible.
@@ -99,6 +114,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   sesionActual: null,
   sesiones: [],
   sesionesDetalle: [],
+  detallesCompletos: [],
   detallesPorId: {},
   cargando: false,
   error: null,
@@ -293,6 +309,36 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       }
       return { sesiones, sesionesDetalle }
     }, (resultado) => resultado)
+  },
+
+  cargarDetallesCompletos: async (usuarioId, limite = LIMITE_DETALLES_COMPLETOS) => {
+    await ejecutarAccion(set, async (db) => {
+      const sesiones = await listarSesionesPorUsuario(db, usuarioId)
+      const recientes = sesiones.slice(0, limite)
+      const { sesionesDetalle, detallesPorId } = get()
+      const detalles: SesionDetalle[] = []
+      for (const sesion of recientes) {
+        // Cache primero: las sesiones ya conocidas no vuelven a la BD.
+        const enCache =
+          sesionesDetalle.find((d) => d.id === sesion.id) ?? detallesPorId[sesion.id]
+        if (enCache) {
+          detalles.push(enCache)
+          continue
+        }
+        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        if (detalle) {
+          detalles.push(detalle)
+        }
+      }
+      return { sesiones, detalles }
+    }, ({ sesiones, detalles }) => ({
+      sesiones,
+      detallesCompletos: detalles,
+      detallesPorId: {
+        ...get().detallesPorId,
+        ...Object.fromEntries(detalles.map((d) => [d.id, d])),
+      },
+    }))
   },
 
   cargarDetalleSesion: async (id) => {

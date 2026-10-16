@@ -127,6 +127,8 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
       sesionActual: null,
       sesiones: [],
       sesionesDetalle: [],
+      detallesCompletos: [],
+      detallesPorId: {},
       cargando: false,
       error: null,
     })
@@ -243,5 +245,72 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
     expect(detalle.registros[0].series).toHaveLength(2)
     expect(detalle.registros[0].series[1].peso_levantado).toBe(62.5)
     expect(detalle.registros[0].series[1].reps_realizadas).toBe(8)
+  })
+
+  it('cargarDetallesCompletos lee las sesiones reales de la BD (registros y series) y cachea', async () => {
+    const { iniciarSesion, agregarSerie, finalizarSesion, cargarDetallesCompletos } =
+      useSesionStore.getState()
+    await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+    const registroId1 = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+    await agregarSerie(registroId1, nuevaSerie(1))
+    await finalizarSesion({ notas: 'día 1', rpe_sesion: 7 })
+    await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+    const registroId2 = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+    await agregarSerie(registroId2, { ...nuevaSerie(1), peso_levantado: 65 })
+    await finalizarSesion({})
+
+    // Se limpia la memoria para forzar la lectura real desde la BD.
+    useSesionStore.setState({ sesiones: [], sesionesDetalle: [], detallesPorId: {} })
+
+    await cargarDetallesCompletos('u1')
+
+    const estado = useSesionStore.getState()
+    expect(estado.error).toBeNull()
+    expect(estado.sesiones).toHaveLength(2)
+    expect(estado.detallesCompletos).toHaveLength(2)
+    // Series leídas desde la BD real: los dos pesos de las dos sesiones.
+    const pesos = estado.detallesCompletos
+      .flatMap((detalle) => detalle.registros.flatMap((registro) => registro.series.map((s) => s.peso_levantado)))
+      .sort((a, b) => a - b)
+    expect(pesos).toEqual([60, 65])
+    // El detalle queda cacheado para cargarDetalleSesion (historial).
+    expect(Object.keys(estado.detallesPorId)).toHaveLength(2)
+  })
+
+  it('cargarDetallesCompletos respeta el límite solicitado', async () => {
+    const { iniciarSesion, finalizarSesion, cargarDetallesCompletos } = useSesionStore.getState()
+    for (let i = 0; i < 3; i += 1) {
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      await finalizarSesion({})
+    }
+
+    useSesionStore.setState({ sesiones: [], sesionesDetalle: [], detallesPorId: {} })
+
+    await cargarDetallesCompletos('u1', 2)
+
+    const estado = useSesionStore.getState()
+    expect(estado.error).toBeNull()
+    expect(estado.sesiones).toHaveLength(3)
+    expect(estado.detallesCompletos).toHaveLength(2)
+  })
+
+  it('cargarDetallesCompletos reutiliza el cache de sesionesDetalle sin releer la BD', async () => {
+    const { iniciarSesion, agregarSerie, finalizarSesion, cargarDetallesCompletos } =
+      useSesionStore.getState()
+    await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+    const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+    await agregarSerie(registroId, nuevaSerie(1))
+    await finalizarSesion({})
+
+    const cachePrevio = useSesionStore.getState().sesionesDetalle
+    expect(cachePrevio).toHaveLength(1)
+
+    await cargarDetallesCompletos('u1')
+
+    const estado = useSesionStore.getState()
+    expect(estado.error).toBeNull()
+    // El detalle cacheado (mismo objeto) se reutiliza, sin nueva lectura.
+    expect(estado.detallesCompletos[0]).toBe(cachePrevio[0])
+    expect(estado.detallesCompletos).toHaveLength(1)
   })
 })

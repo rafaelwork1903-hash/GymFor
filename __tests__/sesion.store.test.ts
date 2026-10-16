@@ -35,6 +35,7 @@ describe('useSesionStore', () => {
       sesionActual: null,
       sesiones: [],
       sesionesDetalle: [],
+      detallesCompletos: [],
       detallesPorId: {},
       cargando: false,
       error: null,
@@ -281,6 +282,88 @@ describe('useSesionStore', () => {
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.sesiones).toEqual([])
       expect(result.current.error).toBe('History error')
+    })
+  })
+
+  describe('cargarDetallesCompletos', () => {
+    it('éxito: carga sesiones y el detalle de las recientes, y cachea en detallesPorId', async () => {
+      const mockSesiones = [mockSesionResumen, { ...mockSesionResumen, id: 's2' }]
+      const mockDetalle2 = { ...mockSesionDetalle, id: 's2' }
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue(mockSesiones)
+      ;(obtenerSesionDetalle as jest.Mock)
+        .mockResolvedValueOnce(mockSesionDetalle)
+        .mockResolvedValueOnce(mockDetalle2)
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetallesCompletos('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.sesiones).toEqual(mockSesiones)
+      expect(result.current.detallesCompletos).toEqual([mockSesionDetalle, mockDetalle2])
+      expect(result.current.detallesPorId['s1']).toEqual(mockSesionDetalle)
+      expect(result.current.detallesPorId['s2']).toEqual(mockDetalle2)
+      expect(result.current.error).toBeNull()
+    })
+
+    it('respeta el límite de sesiones solicitado', async () => {
+      const mockSesiones = Array.from({ length: 4 }, (_, i) => ({
+        ...mockSesionResumen,
+        id: `s${i}`,
+      }))
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue(mockSesiones)
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(mockSesionDetalle)
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetallesCompletos('u1', 2)
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(obtenerSesionDetalle).toHaveBeenCalledTimes(2)
+      expect(result.current.detallesCompletos).toHaveLength(2)
+    })
+
+    it('cache: las sesiones ya en sesionesDetalle o detallesPorId no vuelven a la BD', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarSesionesPorUsuario as jest.Mock).mockResolvedValue([
+        mockSesionResumen,
+        { ...mockSesionResumen, id: 's2' },
+      ])
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue({ ...mockSesionDetalle, id: 's2' })
+      useSesionStore.setState({ sesionesDetalle: [mockSesionDetalle] })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetallesCompletos('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      // Solo la sesión 's2' (sin cache) fue a la BD.
+      expect(obtenerSesionDetalle).toHaveBeenCalledTimes(1)
+      expect(obtenerSesionDetalle).toHaveBeenCalledWith({}, 's2')
+      expect(result.current.detallesCompletos).toHaveLength(2)
+    })
+
+    it('error: repo rechaza -> error seteado, sin detalles', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(listarSesionesPorUsuario as jest.Mock).mockRejectedValue(new Error('detalle down'))
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarDetallesCompletos('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.detallesCompletos).toEqual([])
+      expect(result.current.error).toBe('detalle down')
     })
   })
 
