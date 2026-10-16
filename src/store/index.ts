@@ -3,6 +3,7 @@
  */
 
 export { useConfiguracionStore } from './configuracion.store'
+export { useEjerciciosStore } from './ejercicios.store'
 export { useRutinasStore } from './rutinas.store'
 export { useSesionStore } from './sesion.store'
 
