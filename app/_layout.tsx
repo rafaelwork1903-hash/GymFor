@@ -79,6 +79,9 @@ export default function RootLayout() {
         <SQLiteProvider databaseName={NOMBRE_BD} onInit={inicializarBD}>
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/* Creación completa de rutinas: pantalla dedicada con cabecera
+                propia (días y ejercicios desde el catálogo). */}
+            <Stack.Screen name="nueva-rutina" options={{ headerShown: false }} />
           </Stack>
         </SQLiteProvider>
       </ErrorBoundary>
