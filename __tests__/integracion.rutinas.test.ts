@@ -11,6 +11,9 @@ import { useRutinasStore } from '../src/store/rutinas.store'
  * bug reportado: una plantilla activa y luego una rutina propia activa (el
  * repositorio viejo solo desactivaba las del usuario → quedaban DOS).
  *
+ * También la creación completa de rutinas (días + ejercicios del catálogo,
+ * issue #23): lo que la app guarda se lee igual desde la BD real.
+ *
  * Solo se mockea la conexión (`src/db/client`).
  */
 
@@ -122,5 +125,231 @@ describe('integración rutinas: invariante de una sola rutina activa', () => {
     // Se conserva la más recientemente actualizada (r1, con AHORA).
     const activa = adaptador.leer<{ id: string }>('SELECT id FROM rutinas WHERE activa = 1')
     expect(activa[0].id).toBe('r1')
+  })
+})
+
+describe('integración rutinas: creación completa con días y ejercicios (issue #23)', () => {
+  let adaptador: AdaptadorSQLite
+
+  /** Catálogo mínimo: los ejercicios_en_rutina tienen FK al catálogo. */
+  async function sembrarCatalogo(adaptadorLocal: AdaptadorSQLite): Promise<void> {
+    for (const id of ['ej:press_banca', 'ej:press_hombros', 'ej:jalon_pecho']) {
+      await adaptadorLocal.runAsync(
+        `INSERT INTO ejercicios (
+          id, nombre, grupo_muscular_primario, grupos_musculares_secundarios,
+          equipamiento, es_compuesto, factor_fraccional, instrucciones, video_url
+        ) VALUES (?, ?, 'pecho', '[]', 'mancuernas', 1, 1.0, NULL, NULL)`,
+        [id, id],
+      )
+    }
+  }
+
+  beforeEach(async () => {
+    adaptador = new AdaptadorSQLite()
+    await adaptador.runAsync(
+      `INSERT INTO usuarios (id, nombre, configuracion_entrenamiento, creado_en, actualizado_en)
+       VALUES ('u1', 'Atleta', '{}', ?, ?)`,
+      [AHORA, AHORA],
+    )
+    await sembrarCatalogo(adaptador)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    useRutinasStore.setState({
+      rutinas: [],
+      rutinaSeleccionada: null,
+      cargando: false,
+      error: null,
+    })
+  })
+
+  it('crearRutinaNueva persiste los días y sus ejercicios en SQLite con sus objetivos', async () => {
+    const creada = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Push Pull Legs',
+      descripcion: 'Mía, 2 días',
+      dias: [
+        {
+          nombre_dia: 'Empuje',
+          notas: 'Pecho + hombros',
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: null,
+              descanso_segundos: 90,
+            },
+            {
+              ejercicio_id: 'ej:press_hombros',
+              orden: 2,
+              series_objetivo: 4,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 12,
+              peso_objetivo: 12.5,
+              descanso_segundos: null,
+            },
+          ],
+        },
+        {
+          nombre_dia: 'Tracción',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:jalon_pecho',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: 40,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+      ],
+    })
+
+    const estado = useRutinasStore.getState()
+    expect(estado.error).toBeNull()
+    expect(creada).toBeDefined()
+    // La rutina creada aparece en el listado del store (pestaña Rutinas).
+    expect(estado.rutinas.some((r) => r.id === creada!.id)).toBe(true)
+
+    // Días reales en BD: orden, nombre y notas correctos.
+    const diasBD = adaptador.leer<{ id: string; nombre_dia: string; orden: number; notas: string | null }>(
+      'SELECT id, nombre_dia, orden, notas FROM dias_rutina WHERE rutina_id = ? ORDER BY orden',
+      [creada!.id],
+    )
+    expect(diasBD).toHaveLength(2)
+    expect(diasBD[0].nombre_dia).toBe('Empuje')
+    expect(diasBD[0].orden).toBe(1)
+    expect(diasBD[0].notas).toBe('Pecho + hombros')
+    expect(diasBD[1].nombre_dia).toBe('Tracción')
+    expect(diasBD[1].orden).toBe(2)
+    expect(diasBD[1].notas).toBeNull()
+
+    // Ejercicios reales en BD: FKs, orden y objetivos exactos.
+    const ejerciciosBD = adaptador.leer<{
+      dia_id: string
+      ejercicio_id: string
+      orden: number
+      series_objetivo: number
+      reps_objetivo_min: number
+      reps_objetivo_max: number
+      peso_objetivo: number | null
+      descanso_segundos: number | null
+    }>(
+      `SELECT eer.dia_id, eer.ejercicio_id, eer.orden, eer.series_objetivo,
+              eer.reps_objetivo_min, eer.reps_objetivo_max, eer.peso_objetivo, eer.descanso_segundos
+       FROM ejercicios_en_rutina eer
+       JOIN dias_rutina d ON d.id = eer.dia_id
+       WHERE d.rutina_id = ?
+       ORDER BY d.orden, eer.orden`,
+      [creada!.id],
+    )
+    expect(ejerciciosBD).toHaveLength(3)
+    expect(ejerciciosBD[0]).toMatchObject({
+      ejercicio_id: 'ej:press_banca',
+      orden: 1,
+      series_objetivo: 3,
+      reps_objetivo_min: 8,
+      reps_objetivo_max: 12,
+      peso_objetivo: null,
+      descanso_segundos: 90,
+    })
+    expect(ejerciciosBD[1]).toMatchObject({
+      ejercicio_id: 'ej:press_hombros',
+      orden: 2,
+      series_objetivo: 4,
+      reps_objetivo_min: 10,
+      reps_objetivo_max: 12,
+      peso_objetivo: 12.5,
+      descanso_segundos: null,
+    })
+    expect(ejerciciosBD[2]).toMatchObject({
+      ejercicio_id: 'ej:jalon_pecho',
+      orden: 1,
+      series_objetivo: 3,
+      peso_objetivo: 40,
+      descanso_segundos: 90,
+    })
+  })
+
+  it('la rutina creada se relee completa con seleccionarRutina (días + ejercicios, lo que consume Sesión)', async () => {
+    const creada = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Full body',
+      descripcion: '',
+      dias: [
+        {
+          nombre_dia: 'Cuerpo completo A',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 10,
+              peso_objetivo: 30,
+              descanso_segundos: 120,
+            },
+          ],
+        },
+      ],
+    })
+    expect(creada).toBeDefined()
+
+    await useRutinasStore.getState().seleccionarRutina(creada!.id)
+
+    const detalle = useRutinasStore.getState().rutinaSeleccionada
+    expect(detalle).not.toBeNull()
+    expect(detalle!.nombre).toBe('Full body')
+    expect(detalle!.usuario_id).toBe('u1')
+    expect(detalle!.dias).toHaveLength(1)
+    expect(detalle!.dias[0].nombre_dia).toBe('Cuerpo completo A')
+    expect(detalle!.dias[0].ejercicios).toHaveLength(1)
+    // El JOIN resuelve el nombre del ejercicio del catálogo.
+    expect(detalle!.dias[0].ejercicios[0]).toMatchObject({
+      ejercicio_id: 'ej:press_banca',
+      ejercicio_nombre: 'ej:press_banca',
+      series_objetivo: 3,
+      reps_objetivo_min: 8,
+      reps_objetivo_max: 10,
+      peso_objetivo: 30,
+      descanso_segundos: 120,
+    })
+  })
+
+  it('crearRutinaNueva rechaza por FK si el ejercicio no está en el catálogo (sin filas huérfanas)', async () => {
+    const creada = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Rutina rota',
+      descripcion: '',
+      dias: [
+        {
+          nombre_dia: 'Día fantasma',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:inexistente',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: null,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(creada).toBeUndefined()
+    expect(useRutinasStore.getState().error).toContain('FOREIGN KEY')
+    // La transacción hace rollback: ni rutina, ni días, ni ejercicios.
+    expect(adaptador.leer('SELECT id FROM rutinas WHERE nombre = ?', ['Rutina rota'])).toHaveLength(0)
+    expect(adaptador.leer('SELECT id FROM dias_rutina')).toHaveLength(0)
+    expect(adaptador.leer('SELECT id FROM ejercicios_en_rutina')).toHaveLength(0)
   })
 })

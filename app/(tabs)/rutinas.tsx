@@ -1,15 +1,13 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useEffect, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable } from 'react-native'
+import { router } from 'expo-router'
+import { useEffect } from 'react'
+import { Alert, Platform } from 'react-native'
 import {
   Button,
   Card,
-  Input,
-  Label,
   ScrollView,
   Spinner,
   Text,
-  TextArea,
   useTheme,
   XStack,
   YStack,
@@ -128,134 +126,10 @@ function TarjetaRutina({
   )
 }
 
-interface ModalCrearRutinaProps {
-  visible: boolean
-  ocupado: boolean
-  error: string | null
-  onCerrar: () => void
-  /** Devuelve true si la rutina se creó correctamente. */
-  onGuardar: (datos: { nombre: string; descripcion: string }) => Promise<boolean>
-}
-
-/**
- * Formulario de creación de rutina (nombre + descripción).
- *
- * Se usa `Modal` de React Native con contenido Tamagui en lugar del `Sheet`
- * de Tamagui porque la config actual (`@tamagui/config/v5`) no define
- * animation driver y `Sheet` lo exige en runtime.
- */
-function ModalCrearRutina({ visible, ocupado, error, onCerrar, onGuardar }: ModalCrearRutinaProps) {
-  const [nombre, setNombre] = useState('')
-  const [descripcion, setDescripcion] = useState('')
-  const tema = useTheme()
-
-  const cerrar = () => {
-    setNombre('')
-    setDescripcion('')
-    onCerrar()
-  }
-
-  const guardar = async () => {
-    const creada = await onGuardar({ nombre: nombre.trim(), descripcion: descripcion.trim() })
-    if (creada) {
-      cerrar()
-    }
-  }
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={cerrar}
-      statusBarTranslucent
-    >
-      <YStack flex={1} justifyContent="flex-end">
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-          onPress={cerrar}
-          accessibilityLabel="Cerrar formulario"
-        />
-        {/* En iOS el teclado cubriría los campos inferiores del modal;
-            'padding' lo desplaza. No-op en Android (adjustResize) y web. */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <YStack
-            backgroundColor="$background"
-            borderTopLeftRadius="$6"
-            borderTopRightRadius="$6"
-            padding="$4"
-            paddingBottom="$6"
-            gap="$3"
-            borderWidth={1}
-            borderColor="$borderColor"
-          >
-            <Text fontSize="$5" fontWeight="bold" color="$color">
-              Nueva rutina
-            </Text>
-
-            <YStack gap="$1">
-              <Label fontSize="$2" color="$gray10">
-                Nombre
-              </Label>
-              <Input
-                value={nombre}
-                onChangeText={setNombre}
-                placeholder="Ej. Push / Pull / Legs"
-                placeholderTextColor={tema.placeholderColor?.val}
-                borderRadius="$3"
-                padding="$2"
-              />
-            </YStack>
-
-            <YStack gap="$1">
-              <Label fontSize="$2" color="$gray10">
-                Descripción
-              </Label>
-              <TextArea
-                value={descripcion}
-                onChangeText={setDescripcion}
-                placeholder="Objetivo, frecuencia, notas…"
-                placeholderTextColor={tema.placeholderColor?.val}
-                borderRadius="$3"
-                padding="$2"
-                numberOfLines={3}
-              />
-            </YStack>
-
-            {error ? (
-              <Text fontSize="$2" color="$red11">
-                {error}
-              </Text>
-            ) : null}
-
-            <XStack gap="$2" marginTop="$1">
-              <Button size="$4" flex={1} borderWidth={1} borderColor="$borderColor" onPress={cerrar}>
-                Cancelar
-              </Button>
-              <Button
-                size="$4"
-                flex={1}
-                backgroundColor="$gray12"
-                color="$gray1"
-                fontWeight="bold"
-                pressStyle={{ opacity: 0.85 }}
-                disabled={ocupado || nombre.trim().length === 0}
-                icon={ocupado ? undefined : <Ionicons name="add" size={18} color={tema.gray1?.val} />}
-                onPress={() => void guardar()}
-              >
-                {ocupado ? 'Guardando…' : 'Guardar'}
-              </Button>
-            </XStack>
-          </YStack>
-        </KeyboardAvoidingView>
-      </YStack>
-    </Modal>
-  )
-}
-
 /**
  * Pantalla de gestión de rutinas: listado, activación (rutina activa para
- * los entrenamientos), borrado y creación mediante formulario modal.
+ * los entrenamientos), borrado y acceso a la pantalla dedicada de creación
+ * completa (`/nueva-rutina`: días y ejercicios desde el catálogo).
  */
 export default function RutinasScreen() {
   const usuario = useConfiguracionStore((s) => s.usuarioActivo)
@@ -266,12 +140,10 @@ export default function RutinasScreen() {
   const cargarRutinas = useRutinasStore((s) => s.cargarRutinas)
   const seleccionarRutina = useRutinasStore((s) => s.seleccionarRutina)
   const activarRutinaSeleccionada = useRutinasStore((s) => s.activarRutinaSeleccionada)
-  const crearRutinaNueva = useRutinasStore((s) => s.crearRutinaNueva)
   const eliminarRutinaPorId = useRutinasStore((s) => s.eliminarRutinaPorId)
   const desactivarRutinaPorId = useRutinasStore((s) => s.desactivarRutinaPorId)
 
   const tema = useTheme()
-  const [modalAbierto, setModalAbierto] = useState(false)
 
   const usuarioId = usuario?.id ?? null
 
@@ -316,16 +188,6 @@ export default function RutinasScreen() {
         onPress: () => void eliminarRutinaPorId(rutina.id),
       },
     ])
-  }
-
-  const guardarRutina = async (datos: { nombre: string; descripcion: string }) => {
-    const creada = await crearRutinaNueva({
-      usuario_id: usuarioId,
-      nombre: datos.nombre,
-      descripcion: datos.descripcion,
-      dias: [],
-    })
-    return creada !== undefined
   }
 
   const recargar = () => {
@@ -376,7 +238,7 @@ export default function RutinasScreen() {
           fontWeight="bold"
           pressStyle={{ opacity: 0.85 }}
           icon={<Ionicons name="add" size={18} color={tema.gray1?.val} />}
-          onPress={() => setModalAbierto(true)}
+          onPress={() => router.navigate('/nueva-rutina')}
         >
           Crear nueva rutina
         </Button>
@@ -412,14 +274,6 @@ export default function RutinasScreen() {
           </YStack>
         )}
       </ScrollView>
-
-      <ModalCrearRutina
-        visible={modalAbierto}
-        ocupado={cargando}
-        error={error}
-        onCerrar={() => setModalAbierto(false)}
-        onGuardar={guardarRutina}
-      />
     </YStack>
   )
 }

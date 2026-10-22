@@ -105,13 +105,18 @@ export async function obtenerRutinaDetalle(
 
 // ─── Mutaciones ───────────────────────────────────────────────────────────────
 
-/** Crea una rutina completa (días + ejercicios) en una sola transacción. */
+/** Crea una rutina completa (días + ejercicios) en una sola transacción.
+ *
+ * Se usa `withTransactionAsync` (y no `withExclusiveTransactionAsync`)
+ * porque esta última no está soportada en web (lanza en runtime) — misma
+ * convención que migraciones y seed.
+ */
 export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Promise<Rutina> {
   const ahora = ahoraISO()
   const rutinaId = generarId()
 
-  await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync(
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
       `INSERT INTO rutinas (
         id, usuario_id, nombre, descripcion, activa, creado_en, actualizado_en, sincronizado
       ) VALUES (?, ?, ?, ?, 0, ?, ?, 0)`,
@@ -120,14 +125,14 @@ export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Prom
 
     for (const [ordenDia, dia] of rutina.dias.entries()) {
       const diaId = generarId()
-      await txn.runAsync(
+      await db.runAsync(
         `INSERT INTO dias_rutina (id, rutina_id, nombre_dia, orden, notas)
          VALUES (?, ?, ?, ?, ?)`,
         [diaId, rutinaId, dia.nombre_dia, ordenDia + 1, dia.notas ?? null],
       )
 
       for (const [ordenEjercicio, ejercicio] of dia.ejercicios.entries()) {
-        await txn.runAsync(
+        await db.runAsync(
           `INSERT INTO ejercicios_en_rutina (
             id, dia_id, ejercicio_id, orden, series_objetivo,
             reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos
@@ -175,6 +180,8 @@ export async function actualizarRutina(
  * Marca una rutina como activa y desactiva TODAS las demás (plantillas
  * incluidas): la invariante de la app es que a lo sumo haya UNA rutina
  * activa, así que la desactivación es global y no por usuario.
+ *
+ * `withTransactionAsync` (no soportado en web el exclusivo) — ver crearRutina.
  */
 export async function activarRutina(
   db: SQLiteDatabase,
@@ -182,9 +189,9 @@ export async function activarRutina(
   usuarioId: string,
 ): Promise<void> {
   void usuarioId // la desactivación es global: solo puede haber una activa
-  await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync('UPDATE rutinas SET activa = 0, actualizado_en = ?', [ahoraISO()])
-    await txn.runAsync(
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE rutinas SET activa = 0, actualizado_en = ?', [ahoraISO()])
+    await db.runAsync(
       'UPDATE rutinas SET activa = 1, actualizado_en = ?, sincronizado = 0 WHERE id = ?',
       [ahoraISO(), rutinaId],
     )

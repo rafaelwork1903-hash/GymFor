@@ -174,6 +174,80 @@ describe('useRutinasStore', () => {
       expect(result.current.rutinas).toEqual([])
       expect(result.current.error).toBe('Validation error')
     })
+
+    it('con días y ejercicios: el repositorio recibe la rutina completa y se agrega a la lista', async () => {
+      const nuevaCompleta = {
+        ...mockRutina,
+        id: 'r3',
+        nombre: 'Push Pull Legs',
+        descripcion: '3 días',
+      }
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(crearRutina as jest.Mock).mockResolvedValue(nuevaCompleta)
+
+      const { result } = await renderHook(() => useRutinasStore())
+
+      // Mismo payload que construye la pantalla /nueva-rutina: días con
+      // ejercicios del catálogo (series/reps/peso/descanso).
+      const nuevaRutina = {
+        usuario_id: 'u1',
+        nombre: 'Push Pull Legs',
+        descripcion: '3 días',
+        dias: [
+          {
+            nombre_dia: 'Empuje',
+            notas: null,
+            ejercicios: [
+              {
+                ejercicio_id: 'ej:press_banca_mancuernas',
+                orden: 1,
+                series_objetivo: 3,
+                reps_objetivo_min: 8,
+                reps_objetivo_max: 12,
+                peso_objetivo: null,
+                descanso_segundos: 90,
+              },
+              {
+                ejercicio_id: 'ej:press_hombros_mancuernas',
+                orden: 2,
+                series_objetivo: 4,
+                reps_objetivo_min: 10,
+                reps_objetivo_max: 12,
+                peso_objetivo: 12.5,
+                descanso_segundos: null,
+              },
+            ],
+          },
+          {
+            nombre_dia: 'Tracción',
+            notas: 'Focus en espalda',
+            ejercicios: [
+              {
+                ejercicio_id: 'ej:jalon_al_pecho',
+                orden: 1,
+                series_objetivo: 3,
+                reps_objetivo_min: 8,
+                reps_objetivo_max: 12,
+                peso_objetivo: 40,
+                descanso_segundos: 90,
+              },
+            ],
+          },
+        ],
+      }
+
+      let creada: any
+      await act(async () => {
+        creada = await result.current.crearRutinaNueva(nuevaRutina)
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      // El store no altera el payload: el repositorio lo recibe tal cual.
+      expect(crearRutina).toHaveBeenCalledWith({}, nuevaRutina)
+      expect(creada).toEqual(nuevaCompleta)
+      expect(result.current.rutinas).toContainEqual(nuevaCompleta)
+      expect(result.current.error).toBeNull()
+    })
   })
 
   describe('actualizarRutinaExistente', () => {

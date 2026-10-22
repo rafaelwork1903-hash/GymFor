@@ -145,6 +145,47 @@ describe('useConfiguracionStore', () => {
       expect(result.current.usuarioActivo).toBeNull()
       expect(result.current.error).toBe('Unique constraint')
     })
+
+    it('sin crypto.randomUUID (Hermes nativo): no crashea y genera un ID de fallback', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(crearUsuario as jest.Mock).mockResolvedValue(undefined)
+
+      // Simula Hermes: `crypto` existe con getRandomValues pero SIN randomUUID
+      // (o directamente sin crypto). El store debe usar `generarId()`.
+      const cryptoOriginal = globalThis.crypto
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+      try {
+        Object.defineProperty(globalThis, 'crypto', {
+          configurable: true,
+          value: cryptoOriginal
+            ? { getRandomValues: cryptoOriginal.getRandomValues.bind(cryptoOriginal) }
+            : undefined,
+        })
+
+        const { result } = await renderHook(() => useConfiguracionStore())
+
+        await act(async () => {
+          await result.current.crearUsuarioInicial({ nombre: 'Sin Hermes' })
+        })
+
+        await waitFor(() => expect(result.current.cargando).toBe(false))
+        expect(result.current.error).toBeNull()
+        expect(result.current.usuarioActivo?.nombre).toBe('Sin Hermes')
+        // UUID v4 válido (el fallback de src/utils/id.ts).
+        expect(result.current.usuarioActivo?.id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        )
+      } finally {
+        if (descriptor) {
+          Object.defineProperty(globalThis, 'crypto', descriptor)
+        } else {
+          Object.defineProperty(globalThis, 'crypto', {
+            configurable: true,
+            value: cryptoOriginal,
+          })
+        }
+      }
+    })
   })
 
   describe('limpiarUsuario', () => {

@@ -110,12 +110,16 @@ export async function obtenerSesionDetalle(
  * Los IDs de los registros los trae el caller (`NuevaSesion.registros[].id`):
  * se insertan tal cual para que la sesión en curso del store referencie los
  * mismos IDs que existen en BD (los inserts de series dependen de esta FK).
+ *
+ * Se usa `withTransactionAsync` (y no `withExclusiveTransactionAsync`)
+ * porque esta última no está soportada en web (lanza en runtime) — misma
+ * convención que migraciones y seed.
  */
 export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promise<SesionEntrenamiento> {
   const ahora = ahoraISO()
 
-  await db.withExclusiveTransactionAsync(async (txn) => {
-    await txn.runAsync(
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
       `INSERT INTO sesiones (
         id, usuario_id, dia_rutina_id, fecha, duracion_minutos, notas,
         rpe_sesion, creado_en, actualizado_en, sincronizado
@@ -134,14 +138,14 @@ export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promi
     )
 
     for (const registro of nueva.registros) {
-      await txn.runAsync(
+      await db.runAsync(
         `INSERT INTO registros_ejercicio (id, sesion_id, ejercicio_id, rpe_ejercicio)
          VALUES (?, ?, ?, ?)`,
         [registro.id, nueva.sesion.id, registro.ejercicio_id, registro.rpe_ejercicio],
       )
 
       for (const serie of registro.series) {
-        await txn.runAsync(
+        await db.runAsync(
           `INSERT INTO series (
             id, registro_id, numero_serie, peso_levantado, reps_realizadas,
             rpe_serie, rir, completada, notas
