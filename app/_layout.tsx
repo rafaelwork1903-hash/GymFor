@@ -14,28 +14,42 @@ import { tamaguiConfig } from '../tamagui.config'
 /** Espera máxima de las fuentes antes de renderizar con las del sistema. */
 const TIMEOUT_FUENTES_MS = 3000
 
+/**
+ * Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
+ * `usuarios`, así que sin usuario activo no se puede entrenar. La acción
+ * es idempotente (reutiliza el primer usuario de la BD o crea el inicial).
+ *
+ * DEBE montarse DENTRO de `SQLiteProvider`: su efecto abre la BD vía
+ * `obtenerBD()` y, si corre en paralelo con el init del provider, el worker
+ * WASM de expo-sqlite en web hace race al inicializarse dos veces a la vez
+ * (crash "Cannot read properties of undefined (reading 'xFileControl')").
+ * Como hijos del provider solo se montan tras `onInit`, aquí la apertura
+ * ya está serializada.
+ */
+function BootstrapUsuario() {
+  const usuarioActivo = useConfiguracionStore((s) => s.usuarioActivo)
+  const asegurarUsuario = useConfiguracionStore((s) => s.asegurarUsuario)
+
+  useEffect(() => {
+    if (!usuarioActivo) {
+      void asegurarUsuario()
+    }
+  }, [usuarioActivo, asegurarUsuario])
+
+  return null
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme()
   // Tema de la app: preferencia del usuario (persistida) con fallback al
   // esquema del sistema. `TamaguiProvider` lo aplica dinámicamente.
   const temaPreferido = useConfiguracionStore((s) => s.tema)
-  const usuarioActivo = useConfiguracionStore((s) => s.usuarioActivo)
-  const asegurarUsuario = useConfiguracionStore((s) => s.asegurarUsuario)
   const temaResuelto =
     temaPreferido === 'oscuro'
       ? 'dark'
       : temaPreferido === 'claro'
         ? 'light'
         : (colorScheme ?? 'light')
-
-  // Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
-  // `usuarios`, así que sin usuario activo no se puede entrenar. La acción
-  // es idempotente (reutiliza el primer usuario de la BD o crea el inicial).
-  useEffect(() => {
-    if (!usuarioActivo) {
-      void asegurarUsuario()
-    }
-  }, [usuarioActivo, asegurarUsuario])
 
   const [fontsLoaded, fontError] = useFonts({
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
@@ -77,6 +91,8 @@ export default function RootLayout() {
           boundary lo convierte en una pantalla de error con reintento. */}
       <ErrorBoundary titulo="No se pudo iniciar la base de datos">
         <SQLiteProvider databaseName={NOMBRE_BD} onInit={inicializarBD}>
+          {/* Bootstrap de usuario tras el init de la BD (ver docstring). */}
+          <BootstrapUsuario />
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             {/* Creación completa de rutinas: pantalla dedicada con cabecera

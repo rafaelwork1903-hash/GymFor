@@ -9,6 +9,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
 import type { Usuario, Objetivo, Nivel, Sexo } from '../domain/types'
+import { generarId } from '../utils/id'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import {
   obtenerUsuarioPorId,
@@ -74,7 +75,9 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
       crearUsuarioInicial: async (datos) => {
         await ejecutarAccion(set, async (db) => {
           const nuevoUsuario: Usuario = {
-            id: crypto.randomUUID(),
+            // `crypto.randomUUID` no existe en Hermes (nativo): usar
+            // `generarId` (UUID v4 con fallback, ver src/utils/id.ts).
+            id: generarId(),
             nombre: datos.nombre,
             fecha_nacimiento: datos.fecha_nacimiento ?? null,
             sexo: datos.sexo ?? null,
