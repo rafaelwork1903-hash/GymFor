@@ -98,6 +98,8 @@ export default function RootLayout() {
             {/* Creación completa de rutinas: pantalla dedicada con cabecera
                 propia (días y ejercicios desde el catálogo). */}
             <Stack.Screen name="nueva-rutina" options={{ headerShown: false }} />
+            {/* Edición completa de rutinas existentes */}
+            <Stack.Screen name="editar-rutina" options={{ headerShown: false }} />
           </Stack>
         </SQLiteProvider>
       </ErrorBoundary>

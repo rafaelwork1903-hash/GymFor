@@ -7,13 +7,14 @@
 
 import { create } from 'zustand'
 
-import type { Rutina, RutinaDetalle, NuevaRutina, DiaRutinaDetalle } from '../domain/types'
+import type { Rutina, RutinaDetalle, NuevaRutina, RutinaEditada } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import {
   listarRutinas,
   obtenerRutinaDetalle,
   crearRutina,
   actualizarRutina,
+  guardarRutina,
   activarRutina,
   desactivarRutina,
   eliminarRutina,
@@ -26,6 +27,7 @@ export interface RutinasEstado extends EstadoCarga {
   seleccionarRutina: (id: string | null) => Promise<void>
   crearRutinaNueva: (rutina: NuevaRutina) => Promise<Rutina | undefined>
   actualizarRutinaExistente: (id: string, cambios: Partial<Pick<Rutina, 'nombre' | 'descripcion'>>) => Promise<void>
+  guardarRutinaExistente: (id: string, datos: RutinaEditada) => Promise<RutinaDetalle | undefined>
   activarRutinaSeleccionada: (usuarioId: string) => Promise<void>
   /** Desactiva una rutina (la activa=1). Tras llamarla no hay rutina activa. */
   desactivarRutinaPorId: (id: string) => Promise<void>
@@ -77,6 +79,33 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
       )
       return { rutinas }
     })
+  },
+
+  guardarRutinaExistente: async (id, datos) => {
+    return ejecutarAccion(
+      set,
+      async (db) => {
+        const guardada = await guardarRutina(db, id, datos)
+        return guardada
+      },
+      (guardada) => {
+        const rutinaBase: Rutina = {
+          id: guardada.id,
+          usuario_id: guardada.usuario_id,
+          nombre: guardada.nombre,
+          descripcion: guardada.descripcion,
+          activa: guardada.activa,
+          creado_en: guardada.creado_en,
+          actualizado_en: guardada.actualizado_en,
+          sincronizado: guardada.sincronizado,
+        }
+        const existe = get().rutinas.some((r) => r.id === id)
+        const rutinas = existe
+          ? get().rutinas.map((r) => (r.id === id ? rutinaBase : r))
+          : [...get().rutinas, rutinaBase]
+        return { rutinas, rutinaSeleccionada: guardada }
+      },
+    )
   },
 
   activarRutinaSeleccionada: async (usuarioId) => {

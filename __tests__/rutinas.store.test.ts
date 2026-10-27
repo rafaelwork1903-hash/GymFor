@@ -7,6 +7,7 @@ jest.mock('../src/db/repositories/rutina.repository', () => ({
   obtenerRutinaDetalle: jest.fn(),
   crearRutina: jest.fn(),
   actualizarRutina: jest.fn(),
+  guardarRutina: jest.fn(),
   activarRutina: jest.fn(),
   desactivarRutina: jest.fn(),
   eliminarRutina: jest.fn(),
@@ -21,6 +22,7 @@ import {
   obtenerRutinaDetalle,
   crearRutina,
   actualizarRutina,
+  guardarRutina,
   activarRutina,
   desactivarRutina,
   eliminarRutina,
@@ -264,6 +266,88 @@ describe('useRutinasStore', () => {
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.rutinas[0].nombre).toBe('Actualizada')
+    })
+  })
+
+  describe('guardarRutinaExistente', () => {
+    it('éxito: guarda cambios en repo y actualiza rutinas y rutinaSeleccionada', async () => {
+      const rutinaActualizadaDetalle = {
+        ...mockRutina,
+        nombre: 'Rutina Editada',
+        descripcion: 'Nueva descripción',
+        dias: [
+          {
+            id: 'dia-1',
+            rutina_id: 'r1',
+            nombre_dia: 'Día Único',
+            orden: 1,
+            notas: 'Nota',
+            ejercicios: [],
+          },
+        ],
+      }
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(guardarRutina as jest.Mock).mockResolvedValue(rutinaActualizadaDetalle)
+
+      const { result } = await renderHook(() => useRutinasStore())
+      useRutinasStore.setState({
+        rutinas: [mockRutina],
+        rutinaSeleccionada: mockRutinaDetalle as any,
+      })
+
+      let res: any
+      await act(async () => {
+        res = await result.current.guardarRutinaExistente('r1', {
+          nombre: 'Rutina Editada',
+          descripcion: 'Nueva descripción',
+          dias: [
+            {
+              id: 'dia-1',
+              nombre_dia: 'Día Único',
+              orden: 1,
+              notas: 'Nota',
+              ejercicios: [],
+            },
+          ],
+        })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(res).toEqual(rutinaActualizadaDetalle)
+      expect(result.current.rutinaSeleccionada).toEqual(rutinaActualizadaDetalle)
+      expect(result.current.rutinas[0].nombre).toBe('Rutina Editada')
+      expect(result.current.rutinas[0].descripcion).toBe('Nueva descripción')
+      expect(result.current.error).toBeNull()
+    })
+
+    it('error: repo rechaza -> error seteado, cargando false y conserva estado previo', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(guardarRutina as jest.Mock).mockRejectedValue(
+        new Error('No se puede eliminar el día "Día 1" porque tiene sesiones registradas.'),
+      )
+
+      const { result } = await renderHook(() => useRutinasStore())
+      useRutinasStore.setState({
+        rutinas: [mockRutina],
+        rutinaSeleccionada: mockRutinaDetalle as any,
+      })
+
+      let res: any
+      await act(async () => {
+        res = await result.current.guardarRutinaExistente('r1', {
+          nombre: 'Nombre nuevo',
+          descripcion: 'Desc',
+          dias: [],
+        })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(res).toBeUndefined()
+      expect(result.current.error).toBe(
+        'No se puede eliminar el día "Día 1" porque tiene sesiones registradas.',
+      )
+      expect(result.current.rutinas[0].nombre).toBe('Rutina Test')
+      expect(result.current.rutinaSeleccionada).toEqual(mockRutinaDetalle)
     })
   })
 
