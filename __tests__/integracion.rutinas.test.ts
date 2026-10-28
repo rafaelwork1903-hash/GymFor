@@ -353,3 +353,390 @@ describe('integración rutinas: creación completa con días y ejercicios (issue
     expect(adaptador.leer('SELECT id FROM ejercicios_en_rutina')).toHaveLength(0)
   })
 })
+
+describe('integración rutinas: edición de rutina existente (issue #25)', () => {
+  let adaptador: AdaptadorSQLite
+
+  async function sembrarCatalogo(adaptadorLocal: AdaptadorSQLite): Promise<void> {
+    for (const id of ['ej:press_banca', 'ej:press_hombros', 'ej:jalon_pecho', 'ej:sentadilla']) {
+      await adaptadorLocal.runAsync(
+        `INSERT INTO ejercicios (
+          id, nombre, grupo_muscular_primario, grupos_musculares_secundarios,
+          equipamiento, es_compuesto, factor_fraccional, instrucciones, video_url
+        ) VALUES (?, ?, 'pecho', '[]', 'mancuernas', 1, 1.0, NULL, NULL)`,
+        [id, id],
+      )
+    }
+  }
+
+  beforeEach(async () => {
+    adaptador = new AdaptadorSQLite()
+    await adaptador.runAsync(
+      `INSERT INTO usuarios (id, nombre, configuracion_entrenamiento, creado_en, actualizado_en)
+       VALUES ('u1', 'Atleta', '{}', ?, ?)`,
+      [AHORA, AHORA],
+    )
+    await sembrarCatalogo(adaptador)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    useRutinasStore.setState({
+      rutinas: [],
+      rutinaSeleccionada: null,
+      cargando: false,
+      error: null,
+    })
+  })
+
+  it('persistencia de nombre, descripción, días y ejercicios modificados y agregados', async () => {
+    // 1. Crear rutina inicial con 2 días
+    const inicial = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Rutina Base',
+      descripcion: 'Original',
+      dias: [
+        {
+          nombre_dia: 'Empuje',
+          notas: 'Nota 1',
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: 50,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+        {
+          nombre_dia: 'Tracción',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:jalon_pecho',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 12,
+              peso_objetivo: 40,
+              descanso_segundos: 60,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(inicial).toBeDefined()
+    const rutinaId = inicial!.id
+
+    await useRutinasStore.getState().seleccionarRutina(rutinaId)
+    const detalleOriginal = useRutinasStore.getState().rutinaSeleccionada!
+    const dia1 = detalleOriginal.dias[0]
+    const dia2 = detalleOriginal.dias[1]
+    const ej1 = dia1.ejercicios[0]
+
+    // 2. Modificar la rutina existente:
+    // - Renombrar rutina y descripción
+    // - En Día 1: modificar objetivos de ej1 y añadir nuevo ejercicio (ej:press_hombros)
+    // - Añadir Día 3: "Pierna" con ej:sentadilla
+    const resultado = await useRutinasStore.getState().guardarRutinaExistente(rutinaId, {
+      nombre: 'Torso / Pierna',
+      descripcion: 'Frecuencia 2',
+      dias: [
+        {
+          id: dia1.id,
+          nombre_dia: 'Empuje Potente',
+          orden: 1,
+          notas: 'Nueva nota',
+          ejercicios: [
+            {
+              id: ej1.id,
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 4,
+              reps_objetivo_min: 6,
+              reps_objetivo_max: 8,
+              peso_objetivo: 60,
+              descanso_segundos: 120,
+            },
+            {
+              // Nuevo ejercicio en el día existente
+              ejercicio_id: 'ej:press_hombros',
+              orden: 2,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 10,
+              peso_objetivo: 20,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+        {
+          id: dia2.id,
+          nombre_dia: dia2.nombre_dia,
+          orden: 2,
+          notas: null,
+          ejercicios: dia2.ejercicios.map((e) => ({
+            id: e.id,
+            ejercicio_id: e.ejercicio_id,
+            orden: e.orden,
+            series_objetivo: e.series_objetivo,
+            reps_objetivo_min: e.reps_objetivo_min,
+            reps_objetivo_max: e.reps_objetivo_max,
+            peso_objetivo: e.peso_objetivo,
+            descanso_segundos: e.descanso_segundos,
+          })),
+        },
+        {
+          // Nuevo día en la rutina
+          nombre_dia: 'Pierna',
+          orden: 3,
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:sentadilla',
+              orden: 1,
+              series_objetivo: 4,
+              reps_objetivo_min: 6,
+              reps_objetivo_max: 8,
+              peso_objetivo: 80,
+              descanso_segundos: 180,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(resultado).toBeDefined()
+    expect(useRutinasStore.getState().error).toBeNull()
+
+    // 3. Verificar persistencia directa en SQLite
+    const rutinasBD = adaptador.leer<{ nombre: string; descripcion: string }>(
+      'SELECT nombre, descripcion FROM rutinas WHERE id = ?',
+      [rutinaId],
+    )
+    expect(rutinasBD[0]).toEqual({ nombre: 'Torso / Pierna', descripcion: 'Frecuencia 2' })
+
+    const diasBD = adaptador.leer<{ id: string; nombre_dia: string; orden: number }>(
+      'SELECT id, nombre_dia, orden FROM dias_rutina WHERE rutina_id = ? ORDER BY orden',
+      [rutinaId],
+    )
+    expect(diasBD).toHaveLength(3)
+    expect(diasBD[0].nombre_dia).toBe('Empuje Potente')
+    expect(diasBD[0].id).toBe(dia1.id)
+    expect(diasBD[1].nombre_dia).toBe('Tracción')
+    expect(diasBD[1].id).toBe(dia2.id)
+    expect(diasBD[2].nombre_dia).toBe('Pierna')
+
+    const ejsDia1 = adaptador.leer<{
+      id: string
+      ejercicio_id: string
+      series_objetivo: number
+      peso_objetivo: number
+    }>(
+      'SELECT id, ejercicio_id, series_objetivo, peso_objetivo FROM ejercicios_en_rutina WHERE dia_id = ? ORDER BY orden',
+      [dia1.id],
+    )
+    expect(ejsDia1).toHaveLength(2)
+    expect(ejsDia1[0]).toMatchObject({
+      id: ej1.id,
+      ejercicio_id: 'ej:press_banca',
+      series_objetivo: 4,
+      peso_objetivo: 60,
+    })
+    expect(ejsDia1[1].ejercicio_id).toBe('ej:press_hombros')
+  })
+
+  it('borrado de días y ejercicios no usados', async () => {
+    // 1. Crear rutina con 2 días y 2 ejercicios en el día 1
+    const inicial = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Rutina Completa',
+      descripcion: '',
+      dias: [
+        {
+          nombre_dia: 'Día 1',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: 50,
+              descanso_segundos: 90,
+            },
+            {
+              ejercicio_id: 'ej:press_hombros',
+              orden: 2,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: 20,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+        {
+          nombre_dia: 'Día 2',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:sentadilla',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 12,
+              peso_objetivo: 70,
+              descanso_segundos: 120,
+            },
+          ],
+        },
+      ],
+    })
+
+    const rutinaId = inicial!.id
+    await useRutinasStore.getState().seleccionarRutina(rutinaId)
+    const detalleOriginal = useRutinasStore.getState().rutinaSeleccionada!
+    const dia1 = detalleOriginal.dias[0]
+    const dia2 = detalleOriginal.dias[1]
+    const ej1 = dia1.ejercicios[0]
+
+    expect(adaptador.leer('SELECT id FROM dias_rutina WHERE rutina_id = ?', [rutinaId])).toHaveLength(2)
+    expect(adaptador.leer('SELECT id FROM ejercicios_en_rutina')).toHaveLength(3)
+
+    // 2. Guardar omitiendo el Día 2 y omitiendo el segundo ejercicio del Día 1
+    const guardada = await useRutinasStore.getState().guardarRutinaExistente(rutinaId, {
+      nombre: 'Rutina Reducida',
+      descripcion: '',
+      dias: [
+        {
+          id: dia1.id,
+          nombre_dia: dia1.nombre_dia,
+          orden: 1,
+          notas: null,
+          ejercicios: [
+            {
+              id: ej1.id,
+              ejercicio_id: ej1.ejercicio_id,
+              orden: 1,
+              series_objetivo: ej1.series_objetivo,
+              reps_objetivo_min: ej1.reps_objetivo_min,
+              reps_objetivo_max: ej1.reps_objetivo_max,
+              peso_objetivo: ej1.peso_objetivo,
+              descanso_segundos: ej1.descanso_segundos,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(guardada).toBeDefined()
+
+    // 3. Verificar en BD: Día 2 borrado, y el ejercicio 2 del Día 1 borrado
+    const diasRestantes = adaptador.leer<{ id: string }>('SELECT id FROM dias_rutina WHERE rutina_id = ?', [rutinaId])
+    expect(diasRestantes).toHaveLength(1)
+    expect(diasRestantes[0].id).toBe(dia1.id)
+
+    // El día 2 ya no existe en la BD
+    expect(adaptador.leer('SELECT id FROM dias_rutina WHERE id = ?', [dia2.id])).toHaveLength(0)
+
+    // Solo queda 1 ejercicio en toda la BD
+    const ejsRestantes = adaptador.leer<{ id: string }>('SELECT id FROM ejercicios_en_rutina')
+    expect(ejsRestantes).toHaveLength(1)
+    expect(ejsRestantes[0].id).toBe(ej1.id)
+  })
+
+  it('bloqueo de borrado de un día con sesiones registradas', async () => {
+    // 1. Crear rutina con 2 días
+    const inicial = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Rutina con Historial',
+      descripcion: '',
+      dias: [
+        {
+          nombre_dia: 'Día A',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 10,
+              peso_objetivo: 40,
+              descanso_segundos: 60,
+            },
+          ],
+        },
+        {
+          nombre_dia: 'Día B',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:sentadilla',
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 10,
+              peso_objetivo: 60,
+              descanso_segundos: 90,
+            },
+          ],
+        },
+      ],
+    })
+
+    const rutinaId = inicial!.id
+    await useRutinasStore.getState().seleccionarRutina(rutinaId)
+    const detalleOriginal = useRutinasStore.getState().rutinaSeleccionada!
+    const diaA = detalleOriginal.dias[0]
+    const diaB = detalleOriginal.dias[1]
+
+    // 2. Insertar una sesión de entrenamiento que referencia el Día B
+    await adaptador.runAsync(
+      `INSERT INTO sesiones (id, usuario_id, dia_rutina_id, fecha, duracion_minutos, notas, rpe_sesion, creado_en, actualizado_en, sincronizado)
+       VALUES ('sesion-1', 'u1', ?, '2026-10-27', 45, 'Buena sesión', 8, ?, ?, 0)`,
+      [diaB.id, AHORA, AHORA],
+    )
+
+    // 3. Intentar guardar la rutina borrando el Día B (solo enviamos Día A)
+    const intento = await useRutinasStore.getState().guardarRutinaExistente(rutinaId, {
+      nombre: 'Rutina Intentando Borrar Día Con Sesión',
+      descripcion: '',
+      dias: [
+        {
+          id: diaA.id,
+          nombre_dia: diaA.nombre_dia,
+          orden: 1,
+          notas: null,
+          ejercicios: [
+            {
+              id: diaA.ejercicios[0].id,
+              ejercicio_id: diaA.ejercicios[0].ejercicio_id,
+              orden: 1,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 10,
+              peso_objetivo: 40,
+              descanso_segundos: 60,
+            },
+          ],
+        },
+      ],
+    })
+
+    // Debe ser rechazado
+    expect(intento).toBeUndefined()
+    expect(useRutinasStore.getState().error).toBe(
+      `No se puede eliminar el día "Día B" porque tiene sesiones registradas.`,
+    )
+
+    // 4. En la base de datos nada debe haberse alterado: el Día B sigue intacto
+    const diasEnBD = adaptador.leer<{ id: string }>('SELECT id FROM dias_rutina WHERE rutina_id = ?', [rutinaId])
+    expect(diasEnBD).toHaveLength(2)
+    expect(adaptador.leer('SELECT id FROM dias_rutina WHERE id = ?', [diaB.id])).toHaveLength(1)
+    expect(adaptador.leer('SELECT id FROM sesiones WHERE id = ?', ['sesion-1'])).toHaveLength(1)
+  })
+})

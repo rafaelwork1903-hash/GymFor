@@ -27,10 +27,11 @@ interface TarjetaRutinaProps {
   colorIconoError: string | undefined
   onActivar: (rutina: Rutina) => void
   onDesactivar: (rutina: Rutina) => void
+  onEditar: (rutina: Rutina) => void
   onEliminar: (rutina: Rutina) => void
 }
 
-/** Tarjeta de rutina: resalta la activa y expone activar/desactivar/eliminar. */
+/** Tarjeta de rutina: resalta la activa y expone activar/desactivar/editar/eliminar. */
 function TarjetaRutina({
   rutina,
   ocupado,
@@ -39,6 +40,7 @@ function TarjetaRutina({
   colorIconoError,
   onActivar,
   onDesactivar,
+  onEditar,
   onEliminar,
 }: TarjetaRutinaProps) {
   const activa = rutina.activa === 1
@@ -110,7 +112,18 @@ function TarjetaRutina({
         )}
         <Button
           size="$3"
-          flex={activa ? 1 : undefined}
+          backgroundColor="transparent"
+          borderWidth={1}
+          borderColor="$borderColor"
+          color="$color"
+          disabled={ocupado}
+          icon={<Ionicons name="create-outline" size={16} color={colorIconoNeutro} />}
+          onPress={() => onEditar(rutina)}
+        >
+          Editar
+        </Button>
+        <Button
+          size="$3"
           backgroundColor="transparent"
           borderWidth={1}
           borderColor="$red8"
@@ -168,6 +181,10 @@ export default function RutinasScreen() {
   // Desactivar no es destructivo: no necesita confirmación.
   const desactivar = (rutina: Rutina) => {
     void desactivarRutinaPorId(rutina.id)
+  }
+
+  const editar = (rutina: Rutina) => {
+    router.push({ pathname: '/editar-rutina', params: { id: rutina.id } })
   }
 
   const confirmarEliminar = (rutina: Rutina) => {
@@ -268,6 +285,7 @@ export default function RutinasScreen() {
                 colorIconoError={tema.red11?.val}
                 onActivar={activar}
                 onDesactivar={desactivar}
+                onEditar={editar}
                 onEliminar={confirmarEliminar}
               />
             ))}

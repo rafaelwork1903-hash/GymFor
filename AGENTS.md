@@ -180,3 +180,28 @@ Docs: https://docs.expo.dev/eas/index.md
   - **Móvil — botón Iniciar entrenamiento deshabilitado ("Preparando tu perfil…" para siempre)**: `crearUsuarioInicial` (configuracion.store.ts) usaba `crypto.randomUUID()` a pelo — **Hermes no lo implementa** (por eso existe `generarId()` en `src/utils/id.ts` con fallback UUID v4). El seed NO crea usuarios: la ÚNICA vía de crear el usuario inicial crasheaba en nativo → `usuarioActivo` quedaba `null` y el CTA de Sesión quedaba deshabilitado con "Preparando tu perfil de usuario…". Fix: `id: generarId()`. Test de regresión en `configuracion.store.test.ts`: simula `crypto` sin `randomUUID` y verifica que se genera un UUID v4 válido sin crashear.
   - **Web — crash al arrancar ("No se pudo iniciar la base de datos: TypeError: Cannot read properties of undefined (reading 'xFileControl')")**: reproducido con Playwright headless. Causa: la app abría `gymfor.db` DOS VECES EN PARALELO al montar (SQLiteProvider con `onInit` + bootstrap `asegurarUsuario` vía `obtenerBD()` en un `useEffect` del RootLayout). El worker WASM de expo-sqlite (`web/worker.ts`) no serializa mensajes y `maybeInitAsync()` NO es memoizada como promesa → dos `WaSQLiteFactory` concurrentes → dos instancias del módulo → el VFS queda registrado en el mapa `targets` de una instancia y las operaciones llegan a la otra → `targets.get(key)` = undefined → `receiver.xFileControl` explota. Fix app-level: el bootstrap se movió a un componente `BootstrapUsuario` montado DENTRO de `SQLiteProvider` (sus hijos solo se montan tras `onInit`, hooks.js:114-117) → la apertura de `obtenerBD()` queda serializada tras el init del provider (esto también elimina el race nativo de "no such table" en primer arranque). Sin parches en node_modules.
 - Verificado (adenda 2): `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 14/14 suites y 127/127 tests ✅. Además, flujo E2E verificado en web con Playwright headless: dashboard carga con usuario "Atleta", activar rutina, seleccionar día en Sesión e "Iniciar entrenamiento" arranca la sesión con ejercicios y objetivos.
+
+### 2026-10-27 — feat/rutinas-editar (issue #25)
+
+- **Dominio** (`src/domain/types.ts`):
+  - Nuevos tipos `RutinaEditada`, `DiaRutinaEditado` y `EjercicioEnRutinaEditado` con `id?: string` para distinguir entre entidades preexistentes y nuevas añadidas durante la edición. Sin migraciones de esquema.
+- **Repositorio** (`src/db/repositories/rutina.repository.ts`):
+  - Nueva función `guardarRutina(db, id, datos)` que actualiza la rutina completa en una transacción `withTransactionAsync` (compatible con móvil y web).
+  - Actualiza cabecera en `rutinas`, y gestiona `dias_rutina` y `ejercicios_en_rutina`: actualiza existentes, inserta nuevos y elimina los no presentes en el formulario.
+  - Para evitar colisiones con las restricciones `UNIQUE(rutina_id, orden)` y `UNIQUE(dia_id, orden)` durante reordenaciones/borrados, se desplazan temporalmente los órdenes preexistentes (+10000, respetando `CHECK (orden >= 0)`).
+  - Bloqueo preventivo de borrado de días con sesiones registradas: si algún día a borrar tiene filas en `sesiones` (`dia_rutina_id`), lanza un error descriptivo antes de ejecutar la transacción para proteger el historial y cumplir la restricción FK. Devuelve la `RutinaDetalle` actualizada.
+- **Store** (`src/store/rutinas.store.ts`):
+  - Nueva acción `guardarRutinaExistente(id, datos)` vía `ejecutarAccion`: delega en `guardarRutina`, actualiza el elemento correspondiente en `rutinas` y actualiza `rutinaSeleccionada`.
+  - Limpieza de import no usado (`DiaRutinaDetalle`).
+- **UI**:
+  - `src/components/rutinas/FormularioRutina.tsx`: extracción del formulario completo a un componente compartido reutilizable por creación y edición. Maneja nombre, descripción, días, ejercicios del catálogo maestro (búsqueda + filtros por grupo y equipamiento), validaciones completas, estados de carga/error y tema claro/oscuro.
+  - `app/nueva-rutina.tsx`: refactorizada como consumidor ligero de `FormularioRutina` llamando a `crearRutinaNueva`.
+  - `app/editar-rutina.tsx`: nueva pantalla (`/editar-rutina?id=...`, registrada en `app/_layout.tsx` con `headerShown: false`) que carga la rutina seleccionada, renderiza `FormularioRutina` con sus valores iniciales y guarda mediante `guardarRutinaExistente`.
+  - `app/(tabs)/rutinas.tsx`: botón **Editar** añadido a cada tarjeta de rutina en el listado, que navega a `/editar-rutina` con el ID de la rutina.
+- **Tests** (+5, suite en 14/132 tests):
+  - Store (`__tests__/rutinas.store.test.ts`): `guardarRutinaExistente` éxito (actualiza lista y selección) y error (manejo de error y conservación de estado).
+  - Integración SQLite real (`__tests__/integracion.rutinas.test.ts`):
+    - Persistencia de nombre, descripción, días y ejercicios modificados y agregados.
+    - Borrado de días y ejercicios no usados en la base de datos real.
+    - Bloqueo de borrado de un día que tiene sesiones registradas (lanza error y conserva integridad de BD).
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 14/14 suites y 132/132 tests ✅.

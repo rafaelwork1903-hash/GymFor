@@ -205,6 +205,33 @@ export interface NuevaRutina {
   }>
 }
 
+export interface EjercicioEnRutinaEditado {
+  /** Presente si el ejercicio ya existía en la rutina; ausente si es nuevo. */
+  id?: string
+  ejercicio_id: string
+  orden: number
+  series_objetivo: number
+  reps_objetivo_min: number
+  reps_objetivo_max: number
+  peso_objetivo: number | null
+  descanso_segundos: number | null
+}
+
+export interface DiaRutinaEditado {
+  /** Presente si el día ya existía en la rutina; ausente si es nuevo. */
+  id?: string
+  nombre_dia: string
+  orden: number
+  notas?: string | null
+  ejercicios: EjercicioEnRutinaEditado[]
+}
+
+export interface RutinaEditada {
+  nombre: string
+  descripcion: string
+  dias: DiaRutinaEditado[]
+}
+
 export interface NuevaSesion {
   sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
   registros: Array<{

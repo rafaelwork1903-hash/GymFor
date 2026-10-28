@@ -5,7 +5,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import type { DiaRutina, EjercicioEnRutina, Rutina, GrupoMuscular } from '../../domain/types'
+import type { DiaRutina, EjercicioEnRutina, Rutina, GrupoMuscular, RutinaEditada } from '../../domain/types'
 import { ahoraISO, generarId } from '../../utils/id'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -209,4 +209,156 @@ export async function desactivarRutina(db: SQLiteDatabase, id: string): Promise<
 export async function eliminarRutina(db: SQLiteDatabase, id: string): Promise<void> {
   // El borrado en cascada elimina días y ejercicios asociados.
   await db.runAsync('DELETE FROM rutinas WHERE id = ?', [id])
+}
+
+/**
+ * Guarda y actualiza una rutina existente de forma completa en una sola transacción.
+ * Actualiza nombre, descripción, días y ejercicios en rutina.
+ * Elimina días y ejercicios que ya no estén presentes en el formulario.
+ * No permite eliminar un día que tenga sesiones registradas en la tabla `sesiones`.
+ *
+ * Devuelve la `RutinaDetalle` actualizada.
+ */
+export async function guardarRutina(
+  db: SQLiteDatabase,
+  id: string,
+  datos: RutinaEditada,
+): Promise<RutinaDetalle> {
+  const actual = await obtenerRutinaPorId(db, id)
+  if (!actual) {
+    throw new Error(`Rutina no encontrada: ${id}`)
+  }
+
+  // Identificar días eliminados y bloquear si alguno tiene sesiones registradas
+  const diasExistentes = await db.getAllAsync<{ id: string; nombre_dia: string }>(
+    'SELECT id, nombre_dia FROM dias_rutina WHERE rutina_id = ?',
+    [id],
+  )
+  const idsDiasEnFormulario = new Set(
+    datos.dias.map((d) => d.id).filter((diaId): diaId is string => Boolean(diaId)),
+  )
+  const diasABorrar = diasExistentes.filter((d) => !idsDiasEnFormulario.has(d.id))
+
+  for (const dia of diasABorrar) {
+    const sesion = await db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM sesiones WHERE dia_rutina_id = ? LIMIT 1',
+      [dia.id],
+    )
+    if (sesion) {
+      throw new Error(
+        `No se puede eliminar el día "${dia.nombre_dia}" porque tiene sesiones registradas.`,
+      )
+    }
+  }
+
+  const ahora = ahoraISO()
+
+  await db.withTransactionAsync(async () => {
+    // 1. Actualizar campos de la rutina
+    await db.runAsync(
+      `UPDATE rutinas SET nombre = ?, descripcion = ?, actualizado_en = ?, sincronizado = 0 WHERE id = ?`,
+      [datos.nombre, datos.descripcion, ahora, id],
+    )
+
+    // 2. Borrar días que ya no están (CASCADE borra sus ejercicios_en_rutina)
+    for (const dia of diasABorrar) {
+      await db.runAsync('DELETE FROM dias_rutina WHERE id = ?', [dia.id])
+    }
+
+    // 3. Desplazar órdenes existentes de días para evitar colisiones con UNIQUE(rutina_id, orden)
+    await db.runAsync('UPDATE dias_rutina SET orden = orden + 10000 WHERE rutina_id = ?', [id])
+
+    // 4. Actualizar o insertar días
+    for (const [ordenDia, dia] of datos.dias.entries()) {
+      const nuevoOrdenDia = ordenDia + 1
+      let diaId: string
+
+      if (dia.id) {
+        diaId = dia.id
+        await db.runAsync(
+          `UPDATE dias_rutina SET nombre_dia = ?, orden = ?, notas = ? WHERE id = ?`,
+          [dia.nombre_dia, nuevoOrdenDia, dia.notas ?? null, diaId],
+        )
+      } else {
+        diaId = generarId()
+        await db.runAsync(
+          `INSERT INTO dias_rutina (id, rutina_id, nombre_dia, orden, notas) VALUES (?, ?, ?, ?, ?)`,
+          [diaId, id, dia.nombre_dia, nuevoOrdenDia, dia.notas ?? null],
+        )
+      }
+
+      // 5. Gestionar ejercicios del día
+      const ejerciciosExistentes = await db.getAllAsync<{ id: string }>(
+        'SELECT id FROM ejercicios_en_rutina WHERE dia_id = ?',
+        [diaId],
+      )
+      const idsEjerciciosEnFormulario = new Set(
+        dia.ejercicios.map((e) => e.id).filter((eId): eId is string => Boolean(eId)),
+      )
+
+      for (const ej of ejerciciosExistentes) {
+        if (!idsEjerciciosEnFormulario.has(ej.id)) {
+          await db.runAsync('DELETE FROM ejercicios_en_rutina WHERE id = ?', [ej.id])
+        }
+      }
+
+      // Desplazar órdenes para evitar colisión con UNIQUE(dia_id, orden)
+      await db.runAsync(
+        'UPDATE ejercicios_en_rutina SET orden = orden + 10000 WHERE dia_id = ?',
+        [diaId],
+      )
+
+      for (const [ordenEj, ejercicio] of dia.ejercicios.entries()) {
+        const nuevoOrdenEj = ordenEj + 1
+
+        if (ejercicio.id) {
+          await db.runAsync(
+            `UPDATE ejercicios_en_rutina SET
+               ejercicio_id = ?,
+               orden = ?,
+               series_objetivo = ?,
+               reps_objetivo_min = ?,
+               reps_objetivo_max = ?,
+               peso_objetivo = ?,
+               descanso_segundos = ?
+             WHERE id = ?`,
+            [
+              ejercicio.ejercicio_id,
+              nuevoOrdenEj,
+              ejercicio.series_objetivo,
+              ejercicio.reps_objetivo_min,
+              ejercicio.reps_objetivo_max,
+              ejercicio.peso_objetivo,
+              ejercicio.descanso_segundos,
+              ejercicio.id,
+            ],
+          )
+        } else {
+          await db.runAsync(
+            `INSERT INTO ejercicios_en_rutina (
+               id, dia_id, ejercicio_id, orden, series_objetivo,
+               reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              generarId(),
+              diaId,
+              ejercicio.ejercicio_id,
+              nuevoOrdenEj,
+              ejercicio.series_objetivo,
+              ejercicio.reps_objetivo_min,
+              ejercicio.reps_objetivo_max,
+              ejercicio.peso_objetivo,
+              ejercicio.descanso_segundos,
+            ],
+          )
+        }
+      }
+    }
+  })
+
+  const actualizada = await obtenerRutinaDetalle(db, id)
+  if (!actualizada) {
+    throw new Error('No se pudo recuperar la rutina recién guardada')
+  }
+  return actualizada
 }
