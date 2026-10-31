@@ -210,6 +210,7 @@ Docs: https://docs.expo.dev/eas/index.md
 
 - **Infraestructura**:
   - `react-native-svg` y `react-native-svg-transformer` instalados con `bunx expo install`.
+  - `react-native-web@^0.21.4` añadido formalmente a dependencies con `bunx expo install`: expone `AssetRegistry` (`react-native-web/dist/exports/AssetRegistry`) resolviendo el fallo de bundling en web originado por la versión 0.21.3 previa.
   - `metro.config.js` configurado con `react-native-svg-transformer/expo` para archivos `.svg`, manteniendo `.wasm` en `assetExts` y cabeceras COOP/COEP para SQLite en web.
   - `package.json` Jest `moduleNameMapper` con mock de SVG (`__mocks__/svgMock.js`) y `src/tipos/svg.d.ts` para tipado global de componentes SVG.
   - Fix de compatibilidad de Jest tras actualización de React Native 0.88 en PR #26: mapping de `react-native/react-private-interface`.
