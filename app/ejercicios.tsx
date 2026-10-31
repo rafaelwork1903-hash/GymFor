@@ -68,8 +68,9 @@ function ChipFiltro({ etiqueta, activo, onPress }: ChipFiltroProps) {
       borderWidth={1}
       borderColor={activo ? '$blue9' : '$borderColor'}
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: activo }}
+      role="button"
+      aria-label={etiqueta}
+      aria-selected={activo}
     >
       {etiqueta}
     </Button>
@@ -152,6 +153,7 @@ export default function PantallaEjercicios() {
               }}
               accessibilityRole="button"
               accessibilityLabel="Volver"
+              aria-label="Volver"
               hitSlop={8}
             >
               <Ionicons name="arrow-back" size={24} color={tema.color?.val} />
@@ -195,6 +197,7 @@ export default function PantallaEjercicios() {
             <Pressable
               onPress={() => setBusqueda('')}
               accessibilityLabel="Limpiar búsqueda"
+              aria-label="Limpiar búsqueda"
               hitSlop={6}
             >
               <Ionicons name="close-circle" size={18} color={tema.gray10?.val} />
@@ -323,6 +326,7 @@ export default function PantallaEjercicios() {
                   onPress={() => setEjercicioSeleccionado(ejercicio)}
                   accessibilityRole="button"
                   accessibilityLabel={`${ejercicio.nombre}, grupo ${ETIQUETAS_GRUPO[ejercicio.grupo_muscular_primario]}, equipamiento ${ETIQUETAS_EQUIPAMIENTO[ejercicio.equipamiento]}. Pulsa para ver técnica y media`}
+                  aria-label={`${ejercicio.nombre}, grupo ${ETIQUETAS_GRUPO[ejercicio.grupo_muscular_primario]}, equipamiento ${ETIQUETAS_EQUIPAMIENTO[ejercicio.equipamiento]}. Pulsa para ver técnica y media`}
                 >
                   <Card
                     padding="$3"

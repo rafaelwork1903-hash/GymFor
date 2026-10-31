@@ -87,8 +87,8 @@ export function MiniaturaEjercicio({
       borderColor="$borderColor"
       alignItems="center"
       justifyContent="center"
-      accessibilityRole="image"
-      accessibilityLabel={media.accessibilityLabel}
+      role="img"
+      aria-label={media.accessibilityLabel}
     >
       {errorCarga ? (
         (() => {
@@ -200,8 +200,8 @@ export function VisualEjercicio({
                 height={altoMedia}
                 alignItems="center"
                 justifyContent="center"
-                accessibilityRole="image"
-                accessibilityLabel={media.accessibilityLabel}
+                role="img"
+                aria-label={media.accessibilityLabel}
               >
                 <SvgComp width="100%" height={altoMedia} />
               </YStack>
@@ -236,8 +236,8 @@ export function VisualEjercicio({
                 height={altoMedia}
                 alignItems="center"
                 justifyContent="center"
-                accessibilityRole="image"
-                accessibilityLabel={media.accessibilityLabel}
+                role="img"
+                aria-label={media.accessibilityLabel}
               >
                 <Placeholder width={altoMedia * 0.7} height={altoMedia * 0.7} />
               </YStack>
@@ -384,6 +384,7 @@ export function ModalVisualEjercicio({
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           onPress={onCerrar}
           accessibilityLabel="Cerrar modal de ejercicio"
+          aria-label="Cerrar modal de ejercicio"
         />
 
         <KeyboardAvoidingView
@@ -408,6 +409,7 @@ export function ModalVisualEjercicio({
                 onPress={onCerrar}
                 accessibilityRole="button"
                 accessibilityLabel="Cerrar"
+                aria-label="Cerrar"
                 hitSlop={8}
               >
                 <Ionicons name="close" size={24} color={tema.color?.val} />
