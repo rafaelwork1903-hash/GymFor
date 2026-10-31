@@ -205,3 +205,38 @@ Docs: https://docs.expo.dev/eas/index.md
     - Borrado de días y ejercicios no usados en la base de datos real.
     - Bloqueo de borrado de un día que tiene sesiones registradas (lanza error y conserva integridad de BD).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 14/14 suites y 132/132 tests ✅.
+
+### 2026-10-31 — feat/media-ejercicios (issue #27)
+
+- **Infraestructura**:
+  - `react-native-svg` y `react-native-svg-transformer` instalados con `bunx expo install`.
+  - `metro.config.js` configurado con `react-native-svg-transformer/expo` para archivos `.svg`, manteniendo `.wasm` en `assetExts` y cabeceras COOP/COEP para SQLite en web.
+  - `package.json` Jest `moduleNameMapper` con mock de SVG (`__mocks__/svgMock.js`) y `src/tipos/svg.d.ts` para tipado global de componentes SVG.
+  - Fix de compatibilidad de Jest tras actualización de React Native 0.88 en PR #26: mapping de `react-native/react-private-interface`.
+- **Capa de Dominio** (`src/domain/media.ts`):
+  - Nuevo módulo puro sin I/O con tipo `MediaEjercicio` (`id`, `ejercicioId`, `tipo: 'foto' | 'svg' | 'url'`, `uri`, `recurso`, `alt`, `accessibilityLabel`).
+  - `REGISTRO_MEDIA_EJERCICIOS`: registro en memoria con cobertura de todos los ejercicios del catálogo maestro (utilizados en las rutinas semilla). Formato mixto con 11 ilustraciones vectoriales SVG locales en `assets/ejercicios/`, 5 fotografías/imágenes locales PNG, y URLs remotas de alta calidad para el resto.
+  - Funciones puras `obtenerMediaEjercicio(ejercicioId)` y `mediaPlaceholder()` para fallback elegante. Sin cambios en el esquema SQL ni en migraciones.
+- **Capa de Store** (`src/store/media.store.ts`):
+  - Nuevo store `useMediaStore` con `mediaPorEjercicioId`, `cargarMediaEjercicios()` (idempotente vía `ejecutarAccion`), `obtenerMedia(ejercicioId, nombre)` (con fallback automático a `mediaPlaceholder`), `limpiarError()`.
+  - Re-exportado en el barrel `src/store/index.ts`.
+- **UI & Componentes**:
+  - `src/components/ejercicios/VisualEjercicio.tsx`:
+    - Componente reutilizable `VisualEjercicio`: media grande (render de componente SVG, foto local o remota con indicador de carga y fallback si falla), alt/accessibilityLabel, badges de grupo primario/secundarios/equipamiento/compuesto, e instrucciones técnicas completas.
+    - `MiniaturaEjercicio`: thumbnail compacto con bordes redondeados y accesibilidad para listados.
+    - `ModalVisualEjercicio`: modal accesible en React Native (sin dependencias de Sheet) para mostrar el detalle visual completo desde cualquier parte.
+  - `app/ejercicios.tsx` (nueva ruta `/ejercicios` en `app/_layout.tsx` con cabecera propia):
+    - Buscador en tiempo real por nombre.
+    - Chips de filtro por grupo muscular (12) y equipamiento (4) filtrando en memoria sobre el catálogo ya cargado.
+    - Listado en `ScrollView` con miniatura, nombre, grupo primario, equipamiento y tipo.
+    - Estados `cargando` (spinner), `error` (tarjeta con Reintentar para recargar catálogo y media), y `vacio` (mensaje con CTA para limpiar filtros).
+  - Integración en `FormularioRutina.tsx`:
+    - En el selector de ejercicios (`SelectorEjercicioModal`): miniatura visual + botón de información/técnica por cada ejercicio.
+    - En cada fila de ejercicio añadido en el día (`FilaEjercicio`): miniatura visual + acceso directo al modal de técnica.
+  - Integración en `sesion.tsx`:
+    - `TarjetaEjercicio` muestra la miniatura visual y botón con icono de ojo para ver la técnica e instrucciones en vivo durante el entrenamiento.
+  - Integración en `app/(tabs)/rutinas.tsx`:
+    - Acceso rápido con botón **Ejercicios** para explorar el catálogo maestro.
+- **Tests** (+5 tests, suite completa en 15/15 suites y 137/137 tests):
+  - Nueva suite `__tests__/media.store.test.ts`: carga de media, acceso por id, fallback a placeholder cuando no existe, idempotencia sin recarga duplicada, fallo con reintento y `limpiarError`.
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 15/15 suites y 137/137 tests ✅.

@@ -21,6 +21,8 @@
     "react-native": "0.88.0",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",
+    "react-native-svg": "15.16.0",
+    "react-native-svg-transformer": "^1.5.3",
     "tamagui": "^2.7.7",
     "zustand": "^5.0.15"
   },
@@ -49,6 +51,10 @@
     "setupFilesAfterEnv": [
       "<rootDir>/jest-setup.ts"
     ],
+    "moduleNameMapper": {
+      "^react-native/react-private-interface$": "<rootDir>/node_modules/react-native/src/react-private-interface.js",
+      "\\.svg$": "<rootDir>/__mocks__/svgMock.js"
+    },
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/__tests__/helpers/"

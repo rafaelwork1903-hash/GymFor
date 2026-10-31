@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <rect width="200" height="200" rx="16" fill="#0f172a" />
+  <!-- Cabeza y torso con bisagra de cadera -->
+  <circle cx="125" cy="70" r="10" fill="#38bdf8" />
+  <path d="M120 78 L85 108" stroke="#0284c7" stroke-width="12" stroke-linecap="round" />
+  <!-- Piernas con ligera flexión de rodilla (bisagra) -->
+  <path d="M85 108 L92 138 L94 165" stroke="#38bdf8" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Brazos colgando perpendiculares sosteniendo la barra -->
+  <path d="M112 85 L112 128" stroke="#0284c7" stroke-width="6" stroke-linecap="round" />
+  <!-- Barra a la altura de las espinillas / debajo de rodillas -->
+  <rect x="75" y="126" width="75" height="5" rx="2" fill="#cbd5e1" />
+  <circle cx="78" cy="128" r="12" fill="#e2e8f0" stroke="#475569" stroke-width="2" />
+  <circle cx="147" cy="128" r="12" fill="#e2e8f0" stroke="#475569" stroke-width="2" />
+  <!-- Suelo -->
+  <line x1="30" y1="168" x2="170" y2="168" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+  <!-- Pies -->
+  <path d="M92 165 L106 167" stroke="#64748b" stroke-width="6" stroke-linecap="round" />
+</svg>

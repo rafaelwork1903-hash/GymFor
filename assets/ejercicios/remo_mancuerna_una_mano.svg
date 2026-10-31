@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <rect width="200" height="200" rx="16" fill="#0f172a" />
+  <!-- Banco horizontal -->
+  <rect x="50" y="125" width="85" height="10" rx="2" fill="#334155" />
+  <rect x="58" y="135" width="8" height="30" rx="2" fill="#475569" />
+  <rect x="120" y="135" width="8" height="30" rx="2" fill="#475569" />
+  <!-- Cabeza y torso inclinado -->
+  <circle cx="68" cy="88" r="9" fill="#38bdf8" />
+  <path d="M72 95 L125 108" stroke="#0284c7" stroke-width="11" stroke-linecap="round" />
+  <!-- Mano de apoyo en el banco -->
+  <path d="M75 100 L75 125" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" />
+  <!-- Rodilla apoyada en banco y pierna en suelo -->
+  <path d="M125 108 L115 125" stroke="#0284c7" stroke-width="8" stroke-linecap="round" />
+  <path d="M125 108 L142 165" stroke="#0284c7" stroke-width="8" stroke-linecap="round" />
+  <!-- Brazo tirando mancuerna con codo alto -->
+  <path d="M96 102 L98 84 L98 96" stroke="#38bdf8" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Mancuerna -->
+  <rect x="90" y="96" width="18" height="5" rx="1" fill="#cbd5e1" />
+  <circle cx="90" cy="98" r="6" fill="#64748b" />
+  <circle cx="108" cy="98" r="6" fill="#64748b" />
+  <!-- Suelo -->
+  <line x1="30" y1="168" x2="170" y2="168" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+</svg>

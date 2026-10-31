@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <rect width="200" height="200" rx="16" fill="#0f172a" />
+  <!-- Cabeza -->
+  <circle cx="152" cy="100" r="10" fill="#38bdf8" />
+  <!-- Torso y piernas en línea recta -->
+  <path d="M145 106 L62 135" stroke="#0284c7" stroke-width="12" stroke-linecap="round" />
+  <!-- Brazos flexionados en ángulo de 90° empujando el suelo -->
+  <path d="M135 110 L140 132 L132 152" stroke="#38bdf8" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Puntas de los pies en el suelo -->
+  <circle cx="58" cy="138" r="5" fill="#64748b" />
+  <!-- Línea del suelo -->
+  <line x1="30" y1="154" x2="175" y2="154" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+</svg>

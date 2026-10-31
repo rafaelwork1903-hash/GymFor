@@ -248,17 +248,32 @@ export default function RutinasScreen() {
           </Card>
         ) : null}
 
-        <Button
-          size="$4"
-          backgroundColor="$gray12"
-          color="$gray1"
-          fontWeight="bold"
-          pressStyle={{ opacity: 0.85 }}
-          icon={<Ionicons name="add" size={18} color={tema.gray1?.val} />}
-          onPress={() => router.navigate('/nueva-rutina')}
-        >
-          Crear nueva rutina
-        </Button>
+        <XStack gap="$2">
+          <Button
+            flex={1}
+            size="$4"
+            backgroundColor="$gray12"
+            color="$gray1"
+            fontWeight="bold"
+            pressStyle={{ opacity: 0.85 }}
+            icon={<Ionicons name="add" size={18} color={tema.gray1?.val} />}
+            onPress={() => router.navigate('/nueva-rutina')}
+          >
+            Nueva rutina
+          </Button>
+          <Button
+            size="$4"
+            backgroundColor="$gray3"
+            color="$color"
+            borderWidth={1}
+            borderColor="$borderColor"
+            pressStyle={{ opacity: 0.85 }}
+            icon={<Ionicons name="images-outline" size={18} color={tema.color?.val} />}
+            onPress={() => router.push('/ejercicios' as any)}
+          >
+            Ejercicios
+          </Button>
+        </XStack>
       </YStack>
 
       {/* Listado scrolleable: con varias rutinas las tarjetas siempre son
