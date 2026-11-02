@@ -287,10 +287,7 @@ function ControlImagenEjercicio({
       setComprimiendo(true)
       onCambioCompresion?.(true)
       try {
-        const uriWebp = await comprimirImagen(
-          asset.uri,
-          asset.width > 0 ? { anchoOriginal: asset.width } : undefined,
-        )
+        const uriWebp = await comprimirImagen(asset.uri)
         onChange(uriWebp)
       } finally {
         setComprimiendo(false)

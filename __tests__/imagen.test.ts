@@ -105,7 +105,7 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     Object.defineProperty(Platform, 'OS', { value: plataformaOriginal, configurable: true })
   })
 
-  it('usa ImageManipulator.manipulate -> resize -> renderAsync -> saveAsync en WEBP (800 px, 0.8), libera recursos y persiste en nativo', async () => {
+  it('usa ImageManipulator.manipulate(uri, { maxWidth: 800 }) -> renderAsync -> saveAsync en WEBP (0.8), sin resize redundante, liberando recursos y persistiendo en nativo', async () => {
     mockSaveAsync.mockResolvedValue({
       uri: 'file:///datos/app/Caches/ImageManipulator/temp.webp',
       width: 800,
@@ -118,7 +118,7 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/original.jpg', {
       maxWidth: ANCHO_MAXIMO_IMAGEN,
     })
-    expect(mockResize).toHaveBeenCalledWith({ width: ANCHO_MAXIMO_IMAGEN })
+    expect(mockResize).not.toHaveBeenCalled()
     expect(mockRenderAsync).toHaveBeenCalledTimes(1)
     expect(mockSaveAsync).toHaveBeenCalledWith({
       compress: CALIDAD_COMPRESION_WEBP,
@@ -133,7 +133,7 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     )
   })
 
-  it('respeta parámetros personalizados de ancho máximo y calidad', async () => {
+  it('respeta parámetros personalizados de ancho máximo (redondeado) y calidad sin reutilizar resize', async () => {
     mockExisteDirectorio = true
     mockSaveAsync.mockResolvedValue({
       uri: 'file:///datos/app/Caches/temp2.webp',
@@ -142,12 +142,12 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     })
 
     const resultado = await comprimirImagen('file:///galeria/foto.png', {
-      anchoMaximo: 600,
+      anchoMaximo: 599.6,
       calidad: 0.7,
     })
 
     expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/foto.png', { maxWidth: 600 })
-    expect(mockResize).toHaveBeenCalledWith({ width: 600 })
+    expect(mockResize).not.toHaveBeenCalled()
     expect(mockSaveAsync).toHaveBeenCalledWith({
       compress: 0.7,
       format: SaveFormat.WEBP,
@@ -157,24 +157,20 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     expect(resultado).toMatch(/\.webp$/)
   })
 
-  it('no reescala hacia arriba si anchoOriginal es menor o igual al ancho máximo', async () => {
+  it('no reestructura ni copia el archivo cuando el URI ya reside dentro de Paths.document', async () => {
+    const uriYaPersistida = 'file:///datos/app/Documents/ejercicios_rutina/previo.webp'
     mockSaveAsync.mockResolvedValue({
-      uri: 'file:///datos/app/Caches/pequena.webp',
+      uri: uriYaPersistida,
       width: 480,
       height: 360,
     })
 
-    await comprimirImagen('file:///galeria/pequena.jpg', {
-      anchoMaximo: 800,
-      anchoOriginal: 480,
-    })
+    const resultado = await comprimirImagen('file:///galeria/pequena.jpg')
 
     expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/pequena.jpg', { maxWidth: 800 })
     expect(mockResize).not.toHaveBeenCalled()
-    expect(mockSaveAsync).toHaveBeenCalledWith({
-      compress: CALIDAD_COMPRESION_WEBP,
-      format: SaveFormat.WEBP,
-    })
+    expect(mockCopyFile).not.toHaveBeenCalled()
+    expect(resultado).toBe(uriYaPersistida)
     expect(mockReleaseImageRef).toHaveBeenCalledTimes(1)
     expect(mockReleaseContext).toHaveBeenCalledTimes(1)
   })
@@ -193,7 +189,7 @@ describe('utilidad comprimirImagen (API contextual WEBP)', () => {
     expect(mockManipulate).toHaveBeenCalledWith('blob:http://localhost:8081/origen', {
       maxWidth: 800,
     })
-    expect(mockResize).toHaveBeenCalledWith({ width: 800 })
+    expect(mockResize).not.toHaveBeenCalled()
     expect(mockSaveAsync).toHaveBeenCalledWith({
       compress: 0.8,
       format: SaveFormat.WEBP,

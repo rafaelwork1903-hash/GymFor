@@ -25,12 +25,10 @@ export const CALIDAD_COMPRESION_WEBP = 0.8
 export const DIRECTORIO_IMAGENES_RUTINA = 'ejercicios_rutina'
 
 export interface OpcionesCompresionImagen {
-  /** Ancho máximo en píxeles (mantiene la relación de aspecto). Por defecto 800. */
+  /** Ancho máximo en píxeles (acota en decodificación manteniendo proporción, sin reescalar hacia arriba). Por defecto 800. */
   anchoMaximo?: number
   /** Calidad de compresión WEBP en el rango (0, 1]. Por defecto 0.8. */
   calidad?: number
-  /** Ancho original conocido (px): si es menor o igual a `anchoMaximo`, no reescala hacia arriba. */
-  anchoOriginal?: number
 }
 
 /**
@@ -106,11 +104,6 @@ export async function comprimirImagen(
   }
 
   const anchoObjetivo = Math.round(anchoMaximo)
-  const requiereRedimension =
-    opciones.anchoOriginal === undefined ||
-    opciones.anchoOriginal <= 0 ||
-    opciones.anchoOriginal > anchoObjetivo
-
   const opcionesGuardado: SaveOptions = {
     compress: calidad,
     format: SaveFormat.WEBP,
@@ -122,10 +115,8 @@ export async function comprimirImagen(
   let resultado: Awaited<ReturnType<ImageRef['saveAsync']>>
 
   try {
+    // `maxWidth` acota el ancho durante la decodificación (preservando proporción y sin reescalar hacia arriba)
     contexto = ImageManipulator.manipulate(uriLimpia, { maxWidth: anchoObjetivo })
-    if (requiereRedimension) {
-      contexto.resize({ width: anchoObjetivo })
-    }
     imagenRenderizada = await contexto.renderAsync()
     resultado = await imagenRenderizada.saveAsync(opcionesGuardado)
   } finally {
