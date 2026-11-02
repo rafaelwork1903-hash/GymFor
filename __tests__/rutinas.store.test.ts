@@ -349,6 +349,117 @@ describe('useRutinasStore', () => {
       expect(result.current.rutinas[0].nombre).toBe('Rutina Test')
       expect(result.current.rutinaSeleccionada).toEqual(mockRutinaDetalle)
     })
+
+    it('con imagen_url: propaga imagen_url al repositorio y conserva el campo en rutinaSeleccionada', async () => {
+      const payloadEdicion = {
+        nombre: 'Rutina con Imágenes',
+        descripcion: 'Personalizada',
+        dias: [
+          {
+            id: 'dia-1',
+            nombre_dia: 'Empuje',
+            orden: 1,
+            notas: null,
+            ejercicios: [
+              {
+                id: 'eer-1',
+                ejercicio_id: 'ej:press_banca_mancuernas',
+                orden: 1,
+                series_objetivo: 4,
+                reps_objetivo_min: 8,
+                reps_objetivo_max: 10,
+                peso_objetivo: 30,
+                descanso_segundos: 90,
+                imagen_url: 'file:///documentos/ejercicios_rutina/ejercicio_1.webp',
+              },
+              {
+                ejercicio_id: 'ej:press_hombros_mancuernas',
+                orden: 2,
+                series_objetivo: 3,
+                reps_objetivo_min: 10,
+                reps_objetivo_max: 12,
+                peso_objetivo: 16,
+                descanso_segundos: 60,
+                imagen_url: 'https://ejemplo.com/hombros.webp',
+              },
+            ],
+          },
+        ],
+      }
+
+      const rutinaGuardadaDetalle = {
+        ...mockRutina,
+        nombre: 'Rutina con Imágenes',
+        descripcion: 'Personalizada',
+        dias: [
+          {
+            id: 'dia-1',
+            rutina_id: 'r1',
+            nombre_dia: 'Empuje',
+            orden: 1,
+            notas: null,
+            ejercicios: [
+              {
+                id: 'eer-1',
+                dia_id: 'dia-1',
+                ejercicio_id: 'ej:press_banca_mancuernas',
+                ejercicio_nombre: 'Press de banca con mancuernas',
+                grupo_muscular_primario: 'pecho' as const,
+                orden: 1,
+                series_objetivo: 4,
+                reps_objetivo_min: 8,
+                reps_objetivo_max: 10,
+                peso_objetivo: 30,
+                descanso_segundos: 90,
+                imagen_url: 'file:///documentos/ejercicios_rutina/ejercicio_1.webp',
+              },
+              {
+                id: 'eer-2',
+                dia_id: 'dia-1',
+                ejercicio_id: 'ej:press_hombros_mancuernas',
+                ejercicio_nombre: 'Press de hombros con mancuernas',
+                grupo_muscular_primario: 'hombros' as const,
+                orden: 2,
+                series_objetivo: 3,
+                reps_objetivo_min: 10,
+                reps_objetivo_max: 12,
+                peso_objetivo: 16,
+                descanso_segundos: 60,
+                imagen_url: 'https://ejemplo.com/hombros.webp',
+              },
+            ],
+          },
+        ],
+      }
+
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(guardarRutina as jest.Mock).mockResolvedValue(rutinaGuardadaDetalle)
+
+      const { result } = await renderHook(() => useRutinasStore())
+      await act(async () => {
+        useRutinasStore.setState({
+          rutinas: [mockRutina],
+          rutinaSeleccionada: mockRutinaDetalle as any,
+        })
+      })
+
+      let guardada: any
+      await act(async () => {
+        guardada = await result.current.guardarRutinaExistente('r1', payloadEdicion)
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(guardarRutina).toHaveBeenCalledWith({}, 'r1', payloadEdicion)
+      expect(guardada).toEqual(rutinaGuardadaDetalle)
+      expect(result.current.rutinas[0].nombre).toBe('Rutina con Imágenes')
+      expect(result.current.rutinaSeleccionada?.dias[0].ejercicios[0].imagen_url).toBe(
+        'file:///documentos/ejercicios_rutina/ejercicio_1.webp',
+      )
+      expect(result.current.rutinaSeleccionada?.dias[0].ejercicios[1].imagen_url).toBe(
+        'https://ejemplo.com/hombros.webp',
+      )
+      expect(result.current.error).toBeNull()
+    })
   })
 
   describe('activarRutinaSeleccionada', () => {

@@ -135,8 +135,8 @@ export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Prom
         await db.runAsync(
           `INSERT INTO ejercicios_en_rutina (
             id, dia_id, ejercicio_id, orden, series_objetivo,
-            reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos, imagen_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             generarId(),
             diaId,
@@ -147,6 +147,7 @@ export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Prom
             ejercicio.reps_objetivo_max,
             ejercicio.peso_objetivo,
             ejercicio.descanso_segundos,
+            ejercicio.imagen_url ?? null,
           ],
         )
       }
@@ -320,7 +321,8 @@ export async function guardarRutina(
                reps_objetivo_min = ?,
                reps_objetivo_max = ?,
                peso_objetivo = ?,
-               descanso_segundos = ?
+               descanso_segundos = ?,
+               imagen_url = ?
              WHERE id = ?`,
             [
               ejercicio.ejercicio_id,
@@ -330,6 +332,7 @@ export async function guardarRutina(
               ejercicio.reps_objetivo_max,
               ejercicio.peso_objetivo,
               ejercicio.descanso_segundos,
+              ejercicio.imagen_url ?? null,
               ejercicio.id,
             ],
           )
@@ -337,8 +340,8 @@ export async function guardarRutina(
           await db.runAsync(
             `INSERT INTO ejercicios_en_rutina (
                id, dia_id, ejercicio_id, orden, series_objetivo,
-               reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               reps_objetivo_min, reps_objetivo_max, peso_objetivo, descanso_segundos, imagen_url
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               generarId(),
               diaId,
@@ -349,6 +352,7 @@ export async function guardarRutina(
               ejercicio.reps_objetivo_max,
               ejercicio.peso_objetivo,
               ejercicio.descanso_segundos,
+              ejercicio.imagen_url ?? null,
             ],
           )
         }

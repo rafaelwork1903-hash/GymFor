@@ -56,6 +56,7 @@ export default function EditarRutinaScreen() {
           reps_objetivo_max: e.reps_objetivo_max,
           peso_objetivo: e.peso_objetivo,
           descanso_segundos: e.descanso_segundos,
+          imagen_url: e.imagen_url,
         })),
       })),
     })
