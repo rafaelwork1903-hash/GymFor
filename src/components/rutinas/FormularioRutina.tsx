@@ -18,6 +18,10 @@ import {
 import type { Ejercicio, Equipamiento, GrupoMuscular } from '../../domain/types'
 import { EQUIPAMIENTOS, GRUPOS_MUSCULARES } from '../../domain/types'
 import { useEjerciciosStore } from '../../store/ejercicios.store'
+import {
+  MiniaturaEjercicio,
+  ModalVisualEjercicio,
+} from '../ejercicios/VisualEjercicio'
 
 // ─── Tipos del formulario compartido ──────────────────────────────────────────
 
@@ -216,6 +220,7 @@ function SelectorEjercicioModal({
   const [busqueda, setBusqueda] = useState('')
   const [filtroGrupo, setFiltroGrupo] = useState<GrupoMuscular | null>(null)
   const [filtroEquipamiento, setFiltroEquipamiento] = useState<Equipamiento | null>(null)
+  const [ejercicioDetalle, setEjercicioDetalle] = useState<Ejercicio | null>(null)
 
   const cerrar = () => {
     setBusqueda('')
@@ -352,6 +357,11 @@ function SelectorEjercicioModal({
                         alignItems="center"
                         opacity={añadido ? 0.5 : 1}
                       >
+                        <MiniaturaEjercicio
+                          ejercicioId={ejercicio.id}
+                          nombre={ejercicio.nombre}
+                          tamano={42}
+                        />
                         <YStack flex={1} gap="$0.5">
                           <Text fontSize="$3" color="$color" numberOfLines={1}>
                             {ejercicio.nombre}
@@ -361,6 +371,17 @@ function SelectorEjercicioModal({
                             {ETIQUETAS_EQUIPAMIENTO[ejercicio.equipamiento]}
                           </Text>
                         </YStack>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation()
+                            setEjercicioDetalle(ejercicio)
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Ver técnica de ${ejercicio.nombre}`}
+                          hitSlop={8}
+                        >
+                          <Ionicons name="information-circle-outline" size={22} color={tema.blue9?.val} />
+                        </Pressable>
                         {añadido ? (
                           <Ionicons name="checkmark" size={18} color={tema.blue9?.val} />
                         ) : (
@@ -379,6 +400,12 @@ function SelectorEjercicioModal({
           </Button>
         </YStack>
       </YStack>
+
+      <ModalVisualEjercicio
+        visible={ejercicioDetalle !== null}
+        ejercicio={ejercicioDetalle}
+        onCerrar={() => setEjercicioDetalle(null)}
+      />
     </Modal>
   )
 }
@@ -425,6 +452,7 @@ interface FilaEjercicioProps {
     valor: string,
   ) => void
   onQuitar: (clave: string) => void
+  onVerDetalle?: (ejercicio: Ejercicio) => void
 }
 
 function InputObjetivo({
@@ -470,6 +498,7 @@ function FilaEjercicio({
   ocupado,
   onCambiar,
   onQuitar,
+  onVerDetalle,
 }: FilaEjercicioProps) {
   const tema = useTheme()
   const invalidos = mostrarErrores ? camposInvalidos(ejercicio) : new Set<keyof EjercicioFormulario>()
@@ -485,6 +514,13 @@ function FilaEjercicio({
       backgroundColor="$gray1"
     >
       <XStack alignItems="center" gap="$2">
+        {datosEjercicio ? (
+          <MiniaturaEjercicio
+            ejercicioId={datosEjercicio.id}
+            nombre={datosEjercicio.nombre}
+            tamano={36}
+          />
+        ) : null}
         <YStack flex={1} gap="$0.5">
           <Text fontSize="$3" fontWeight="600" color="$color" numberOfLines={1}>
             {datosEjercicio?.nombre ?? ejercicio.ejercicio_id}
@@ -496,6 +532,16 @@ function FilaEjercicio({
             </Text>
           ) : null}
         </YStack>
+        {datosEjercicio && onVerDetalle ? (
+          <Pressable
+            onPress={() => onVerDetalle(datosEjercicio)}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver técnica de ${datosEjercicio.nombre}`}
+            hitSlop={8}
+          >
+            <Ionicons name="information-circle-outline" size={20} color={tema.blue9?.val} />
+          </Pressable>
+        ) : null}
         <Pressable
           disabled={ocupado}
           onPress={() => onQuitar(ejercicio.key)}
@@ -569,6 +615,7 @@ interface TarjetaDiaProps {
   onQuitarDia: (clave: string) => void
   onQuitarEjercicio: (claveDia: string, claveEjercicio: string) => void
   onAnadirEjercicio: (claveDia: string) => void
+  onVerDetalle?: (ejercicio: Ejercicio) => void
 }
 
 function TarjetaDia({
@@ -582,6 +629,7 @@ function TarjetaDia({
   onQuitarDia,
   onQuitarEjercicio,
   onAnadirEjercicio,
+  onVerDetalle,
 }: TarjetaDiaProps) {
   const tema = useTheme()
   const ejerciciosPorId = useMemo(
@@ -663,6 +711,7 @@ function TarjetaDia({
               ocupado={ocupado}
               onCambiar={onCambiarEjercicio}
               onQuitar={(clave) => onQuitarEjercicio(dia.key, clave)}
+              onVerDetalle={onVerDetalle}
             />
           ))
         )}
@@ -735,6 +784,7 @@ export function FormularioRutina({
   const [diaSelector, setDiaSelector] = useState<string | null>(null)
   const [intentadoGuardar, setIntentadoGuardar] = useState(false)
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null)
+  const [ejercicioDetalleVisual, setEjercicioDetalleVisual] = useState<Ejercicio | null>(null)
 
   useEffect(() => {
     void cargarEjercicios()
@@ -986,6 +1036,7 @@ export function FormularioRutina({
                 onQuitarDia={quitarDia}
                 onQuitarEjercicio={quitarEjercicio}
                 onAnadirEjercicio={setDiaSelector}
+                onVerDetalle={setEjercicioDetalleVisual}
               />
             ))}
 
@@ -1036,6 +1087,12 @@ export function FormularioRutina({
             anadirEjercicio(diaSeleccionado.key, ejercicio)
           }
         }}
+      />
+
+      <ModalVisualEjercicio
+        visible={ejercicioDetalleVisual !== null}
+        ejercicio={ejercicioDetalleVisual}
+        onCerrar={() => setEjercicioDetalleVisual(null)}
       />
     </YStack>
   )

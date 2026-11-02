@@ -4,6 +4,7 @@
 
 export { useConfiguracionStore } from './configuracion.store'
 export { useEjerciciosStore } from './ejercicios.store'
+export { useMediaStore } from './media.store'
 export { useRutinasStore } from './rutinas.store'
 export { useSesionStore } from './sesion.store'
 

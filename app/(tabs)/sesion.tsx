@@ -17,14 +17,20 @@ import {
 } from 'tamagui'
 
 import { calcularVolumenTotal } from '../../src/domain/metrics'
-import type { EjercicioEnRutinaDetalle, SerieReal } from '../../src/domain/types'
+import type { Ejercicio, EjercicioEnRutinaDetalle, SerieReal } from '../../src/domain/types'
+import {
+  MiniaturaEjercicio,
+  ModalVisualEjercicio,
+} from '../../src/components/ejercicios/VisualEjercicio'
 import { useConfiguracionStore } from '../../src/store/configuracion.store'
+import { useEjerciciosStore } from '../../src/store/ejercicios.store'
 import { useRutinasStore } from '../../src/store/rutinas.store'
 import { useSesionStore } from '../../src/store/sesion.store'
 
 /** Registro en curso tal como lo expone `sesionActual` (subconjunto estructural). */
 interface RegistroSesion {
   registro_id: string
+  ejercicio_id: string
   ejercicio_nombre: string
   series: SerieReal[]
 }
@@ -80,10 +86,17 @@ interface TarjetaEjercicioProps {
       notas: null
     },
   ) => void
+  onVerDetalle?: () => void
 }
 
 /** Ejercicio de la sesión: series registradas + input rápido de nueva serie. */
-function TarjetaEjercicio({ registro, objetivo, ocupado, onAgregar }: TarjetaEjercicioProps) {
+function TarjetaEjercicio({
+  registro,
+  objetivo,
+  ocupado,
+  onAgregar,
+  onVerDetalle,
+}: TarjetaEjercicioProps) {
   const [peso, setPeso] = useState('')
   const [reps, setReps] = useState('')
   const [rpe, setRpe] = useState('')
@@ -132,16 +145,35 @@ function TarjetaEjercicio({ registro, objetivo, ocupado, onAgregar }: TarjetaEje
 
   return (
     <Card size="$4" borderWidth={1} borderColor="$borderColor" padding="$4" gap="$3">
-      <YStack gap="$1">
-        <Text fontSize="$4" fontWeight="bold" color="$color" numberOfLines={1}>
-          {registro.ejercicio_nombre}
-        </Text>
-        {partesObjetivo.length > 0 ? (
-          <Text fontSize="$2" color="$gray10" numberOfLines={1}>
-            Objetivo: {partesObjetivo.join(' · ')}
-          </Text>
-        ) : null}
-      </YStack>
+      <XStack justifyContent="space-between" alignItems="center" gap="$2">
+        <XStack flex={1} alignItems="center" gap="$2.5">
+          <MiniaturaEjercicio
+            ejercicioId={registro.ejercicio_id}
+            nombre={registro.ejercicio_nombre}
+            tamano={44}
+          />
+          <YStack flex={1} gap="$1">
+            <Text fontSize="$4" fontWeight="bold" color="$color" numberOfLines={1}>
+              {registro.ejercicio_nombre}
+            </Text>
+            {partesObjetivo.length > 0 ? (
+              <Text fontSize="$2" color="$gray10" numberOfLines={1}>
+                Objetivo: {partesObjetivo.join(' · ')}
+              </Text>
+            ) : null}
+          </YStack>
+        </XStack>
+        {onVerDetalle && (
+          <Pressable
+            onPress={onVerDetalle}
+            accessibilityRole="button"
+            accessibilityLabel={`Ver técnica y demostración de ${registro.ejercicio_nombre}`}
+            hitSlop={8}
+          >
+            <Ionicons name="eye-outline" size={22} color={tema.blue9?.val} />
+          </Pressable>
+        )}
+      </XStack>
 
       {registro.series.length > 0 ? (
         <YStack backgroundColor="$gray3" borderRadius="$3" padding="$2" gap="$1">
@@ -378,10 +410,18 @@ export default function SesionScreen() {
   const descartarSesion = useSesionStore((s) => s.descartarSesion)
   const limpiarError = useSesionStore((s) => s.limpiarError)
 
+  const ejerciciosPorId = useEjerciciosStore((s) => s.ejerciciosPorId)
+  const cargarEjercicios = useEjerciciosStore((s) => s.cargarEjercicios)
+
   const tema = useTheme()
   const [diaElegidoId, setDiaElegidoId] = useState<string | null>(null)
   const [modalFinalizarAbierto, setModalFinalizarAbierto] = useState(false)
   const [sesionTerminada, setSesionTerminada] = useState<{ volumen: number } | null>(null)
+  const [ejercicioDetalleModal, setEjercicioDetalleModal] = useState<Ejercicio | null>(null)
+
+  useEffect(() => {
+    void cargarEjercicios()
+  }, [cargarEjercicios])
 
   const usuarioId = usuario?.id ?? null
   const cargando = cargandoRutinas || cargandoSesion
@@ -640,6 +680,20 @@ export default function SesionScreen() {
                   objetivo={objetivosPorEjercicio.get(registro.ejercicio_id)}
                   ocupado={cargando}
                   onAgregar={(registroId, serie) => void agregarSerie(registroId, serie)}
+                  onVerDetalle={() => {
+                    const ej = ejerciciosPorId.get(registro.ejercicio_id) ?? {
+                      id: registro.ejercicio_id,
+                      nombre: registro.ejercicio_nombre,
+                      grupo_muscular_primario: 'cuerpo_completo' as const,
+                      grupos_musculares_secundarios: [],
+                      equipamiento: 'peso_corporal' as const,
+                      es_compuesto: 0 as const,
+                      factor_fraccional: 1.0,
+                      instrucciones: null,
+                      video_url: null,
+                    }
+                    setEjercicioDetalleModal(ej)
+                  }}
                 />
               ))
             )}
@@ -652,6 +706,12 @@ export default function SesionScreen() {
           error={errorSesion}
           onCerrar={() => setModalFinalizarAbierto(false)}
           onFinalizar={finalizar}
+        />
+
+        <ModalVisualEjercicio
+          visible={ejercicioDetalleModal !== null}
+          ejercicio={ejercicioDetalleModal}
+          onCerrar={() => setEjercicioDetalleModal(null)}
         />
       </YStack>
     )
@@ -784,6 +844,12 @@ export default function SesionScreen() {
           ) : null}
         </YStack>
       ) : null}
+
+      <ModalVisualEjercicio
+        visible={ejercicioDetalleModal !== null}
+        ejercicio={ejercicioDetalleModal}
+        onCerrar={() => setEjercicioDetalleModal(null)}
+      />
     </YStack>
   )
 }

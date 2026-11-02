@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <rect width="200" height="200" rx="16" fill="#0f172a" />
+  <!-- Banco detrás -->
+  <rect x="35" y="105" width="45" height="12" rx="3" fill="#334155" />
+  <rect x="42" y="117" width="8" height="45" rx="2" fill="#475569" />
+  <!-- Cabeza y torso erguido delante del banco -->
+  <circle cx="88" cy="72" r="10" fill="#38bdf8" />
+  <path d="M88 84 L88 128" stroke="#0284c7" stroke-width="12" stroke-linecap="round" />
+  <!-- Brazos apoyados en banco hacia atrás flexionados -->
+  <path d="M84 92 L62 92 L62 105" stroke="#38bdf8" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Piernas extendidas al frente -->
+  <path d="M88 128 L125 132 L145 160" stroke="#0284c7" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Suelo -->
+  <line x1="25" y1="164" x2="175" y2="164" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+</svg>

@@ -100,6 +100,8 @@ export default function RootLayout() {
             <Stack.Screen name="nueva-rutina" options={{ headerShown: false }} />
             {/* Edición completa de rutinas existentes */}
             <Stack.Screen name="editar-rutina" options={{ headerShown: false }} />
+            {/* Catálogo maestro de ejercicios con media y técnica */}
+            <Stack.Screen name="ejercicios" options={{ headerShown: false }} />
           </Stack>
         </SQLiteProvider>
       </ErrorBoundary>
