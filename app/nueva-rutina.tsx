@@ -39,6 +39,7 @@ export default function NuevaRutinaScreen() {
           reps_objetivo_max: ejercicio.reps_objetivo_max,
           peso_objetivo: ejercicio.peso_objetivo,
           descanso_segundos: ejercicio.descanso_segundos,
+          imagen_url: ejercicio.imagen_url,
         })),
       })),
     })

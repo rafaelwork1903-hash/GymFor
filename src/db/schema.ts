@@ -153,3 +153,13 @@ DROP TABLE IF EXISTS dias_rutina;
 DROP TABLE IF EXISTS rutinas;
 DROP TABLE IF EXISTS usuarios;
 `
+
+/** Versión 2: añade columna opcional de imagen personalizada por ejercicio en la rutina. */
+export const ESQUEMA_VERSION_2 = `
+ALTER TABLE ejercicios_en_rutina ADD COLUMN imagen_url TEXT;
+`
+
+/** Reversión de la migración 2. */
+export const ESQUEMA_VERSION_2_DOWN = `
+ALTER TABLE ejercicios_en_rutina DROP COLUMN imagen_url;
+`

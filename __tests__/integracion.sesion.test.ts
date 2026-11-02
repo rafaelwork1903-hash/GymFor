@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import { ESQUEMA_VERSION_1 } from '../src/db/schema'
+import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2 } from '../src/db/schema'
 import { useSesionStore } from '../src/store/sesion.store'
 
 /**
@@ -29,6 +29,7 @@ class AdaptadorSQLite {
     this.db = new DatabaseSync(':memory:')
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec(ESQUEMA_VERSION_1)
+    this.db.exec(ESQUEMA_VERSION_2)
   }
 
   async runAsync(sql: string, params: unknown[] = []): Promise<unknown> {

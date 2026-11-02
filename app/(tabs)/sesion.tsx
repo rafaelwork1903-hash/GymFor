@@ -32,6 +32,7 @@ interface RegistroSesion {
   registro_id: string
   ejercicio_id: string
   ejercicio_nombre: string
+  imagen_url?: string | null
   series: SerieReal[]
 }
 
@@ -150,6 +151,7 @@ function TarjetaEjercicio({
           <MiniaturaEjercicio
             ejercicioId={registro.ejercicio_id}
             nombre={registro.ejercicio_nombre}
+            imagenUrl={objetivo?.imagen_url ?? registro.imagen_url}
             tamano={44}
           />
           <YStack flex={1} gap="$1">
@@ -417,7 +419,10 @@ export default function SesionScreen() {
   const [diaElegidoId, setDiaElegidoId] = useState<string | null>(null)
   const [modalFinalizarAbierto, setModalFinalizarAbierto] = useState(false)
   const [sesionTerminada, setSesionTerminada] = useState<{ volumen: number } | null>(null)
-  const [ejercicioDetalleModal, setEjercicioDetalleModal] = useState<Ejercicio | null>(null)
+  const [detalleModal, setDetalleModal] = useState<{
+    ejercicio: Ejercicio
+    imagenUrl: string | null
+  } | null>(null)
 
   useEffect(() => {
     void cargarEjercicios()
@@ -681,6 +686,7 @@ export default function SesionScreen() {
                   ocupado={cargando}
                   onAgregar={(registroId, serie) => void agregarSerie(registroId, serie)}
                   onVerDetalle={() => {
+                    const objetivo = objetivosPorEjercicio.get(registro.ejercicio_id)
                     const ej = ejerciciosPorId.get(registro.ejercicio_id) ?? {
                       id: registro.ejercicio_id,
                       nombre: registro.ejercicio_nombre,
@@ -692,7 +698,10 @@ export default function SesionScreen() {
                       instrucciones: null,
                       video_url: null,
                     }
-                    setEjercicioDetalleModal(ej)
+                    setDetalleModal({
+                      ejercicio: ej,
+                      imagenUrl: objetivo?.imagen_url ?? registro.imagen_url ?? null,
+                    })
                   }}
                 />
               ))
@@ -709,9 +718,10 @@ export default function SesionScreen() {
         />
 
         <ModalVisualEjercicio
-          visible={ejercicioDetalleModal !== null}
-          ejercicio={ejercicioDetalleModal}
-          onCerrar={() => setEjercicioDetalleModal(null)}
+          visible={detalleModal !== null}
+          ejercicio={detalleModal?.ejercicio ?? null}
+          imagenUrl={detalleModal?.imagenUrl ?? null}
+          onCerrar={() => setDetalleModal(null)}
         />
       </YStack>
     )
@@ -846,9 +856,10 @@ export default function SesionScreen() {
       ) : null}
 
       <ModalVisualEjercicio
-        visible={ejercicioDetalleModal !== null}
-        ejercicio={ejercicioDetalleModal}
-        onCerrar={() => setEjercicioDetalleModal(null)}
+        visible={detalleModal !== null}
+        ejercicio={detalleModal?.ejercicio ?? null}
+        imagenUrl={detalleModal?.imagenUrl ?? null}
+        onCerrar={() => setDetalleModal(null)}
       />
     </YStack>
   )

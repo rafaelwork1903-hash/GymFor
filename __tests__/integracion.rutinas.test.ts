@@ -740,3 +740,167 @@ describe('integración rutinas: edición de rutina existente (issue #25)', () =>
     expect(adaptador.leer('SELECT id FROM sesiones WHERE id = ?', ['sesion-1'])).toHaveLength(1)
   })
 })
+
+describe('integración rutinas: imagen personalizada por ejercicio (issue #29)', () => {
+  let adaptador: AdaptadorSQLite
+
+  async function sembrarCatalogo(adaptadorLocal: AdaptadorSQLite): Promise<void> {
+    for (const id of ['ej:press_banca', 'ej:press_hombros', 'ej:sentadilla']) {
+      await adaptadorLocal.runAsync(
+        `INSERT INTO ejercicios (
+          id, nombre, grupo_muscular_primario, grupos_musculares_secundarios,
+          equipamiento, es_compuesto, factor_fraccional, instrucciones, video_url
+        ) VALUES (?, ?, 'pecho', '[]', 'mancuernas', 1, 1.0, NULL, NULL)`,
+        [id, id],
+      )
+    }
+  }
+
+  beforeEach(async () => {
+    adaptador = new AdaptadorSQLite()
+    await adaptador.runAsync(
+      `INSERT INTO usuarios (id, nombre, configuracion_entrenamiento, creado_en, actualizado_en)
+       VALUES ('u1', 'Atleta', '{}', ?, ?)`,
+      [AHORA, AHORA],
+    )
+    await sembrarCatalogo(adaptador)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    useRutinasStore.setState({
+      rutinas: [],
+      rutinaSeleccionada: null,
+      cargando: false,
+      error: null,
+    })
+  })
+
+  it('guarda, lee, conserva y permite quitar imagen_url al crear y editar una rutina', async () => {
+    const uriLocal = 'file:///documentos/ejercicios_rutina/press_banca.webp'
+    const urlRemota = 'https://ejemplo.com/hombros.webp'
+
+    // 1. Crear rutina con una imagen local WEBP y otra remota
+    const creada = await useRutinasStore.getState().crearRutinaNueva({
+      usuario_id: 'u1',
+      nombre: 'Rutina Visual',
+      descripcion: 'Con fotos personalizadas',
+      dias: [
+        {
+          nombre_dia: 'Empuje',
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 4,
+              reps_objetivo_min: 8,
+              reps_objetivo_max: 10,
+              peso_objetivo: 60,
+              descanso_segundos: 90,
+              imagen_url: uriLocal,
+            },
+            {
+              ejercicio_id: 'ej:press_hombros',
+              orden: 2,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 12,
+              peso_objetivo: 20,
+              descanso_segundos: 60,
+              imagen_url: urlRemota,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(creada).toBeDefined()
+    expect(useRutinasStore.getState().error).toBeNull()
+
+    // 2. Leer detalle desde SQLite real y comprobar imagen_url
+    await useRutinasStore.getState().seleccionarRutina(creada!.id)
+    const detalleInicial = useRutinasStore.getState().rutinaSeleccionada!
+    const diaOriginal = detalleInicial.dias[0]
+    expect(diaOriginal.ejercicios[0].imagen_url).toBe(uriLocal)
+    expect(diaOriginal.ejercicios[1].imagen_url).toBe(urlRemota)
+
+    // 3. Editar la rutina:
+    // - Conservar uriLocal en el primer ejercicio (cambiando series_objetivo)
+    // - Quitar imagen_url (null) en el segundo ejercicio
+    // - Añadir un segundo día con un ejercicio nuevo con imagen propia
+    const uriSentadilla = 'file:///documentos/ejercicios_rutina/sentadilla.webp'
+    const editada = await useRutinasStore.getState().guardarRutinaExistente(creada!.id, {
+      nombre: 'Rutina Visual Editada',
+      descripcion: 'Actualizada',
+      dias: [
+        {
+          id: diaOriginal.id,
+          nombre_dia: 'Empuje',
+          orden: 1,
+          notas: null,
+          ejercicios: [
+            {
+              id: diaOriginal.ejercicios[0].id,
+              ejercicio_id: 'ej:press_banca',
+              orden: 1,
+              series_objetivo: 5,
+              reps_objetivo_min: 5,
+              reps_objetivo_max: 5,
+              peso_objetivo: 70,
+              descanso_segundos: 120,
+              imagen_url: diaOriginal.ejercicios[0].imagen_url,
+            },
+            {
+              id: diaOriginal.ejercicios[1].id,
+              ejercicio_id: 'ej:press_hombros',
+              orden: 2,
+              series_objetivo: 3,
+              reps_objetivo_min: 10,
+              reps_objetivo_max: 12,
+              peso_objetivo: 20,
+              descanso_segundos: 60,
+              imagen_url: null,
+            },
+          ],
+        },
+        {
+          nombre_dia: 'Pierna',
+          orden: 2,
+          notas: null,
+          ejercicios: [
+            {
+              ejercicio_id: 'ej:sentadilla',
+              orden: 1,
+              series_objetivo: 4,
+              reps_objetivo_min: 6,
+              reps_objetivo_max: 8,
+              peso_objetivo: 90,
+              descanso_segundos: 150,
+              imagen_url: uriSentadilla,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(editada).toBeDefined()
+    expect(useRutinasStore.getState().error).toBeNull()
+
+    // 4. Verificar en store (rutinaSeleccionada) y directamente en SQLite
+    expect(editada!.dias[0].ejercicios[0].imagen_url).toBe(uriLocal)
+    expect(editada!.dias[0].ejercicios[1].imagen_url).toBeNull()
+    expect(editada!.dias[1].ejercicios[0].imagen_url).toBe(uriSentadilla)
+
+    const filasBD = adaptador.leer<{ ejercicio_id: string; imagen_url: string | null }>(
+      `SELECT eer.ejercicio_id, eer.imagen_url
+       FROM ejercicios_en_rutina eer
+       JOIN dias_rutina d ON d.id = eer.dia_id
+       WHERE d.rutina_id = ?
+       ORDER BY d.orden, eer.orden`,
+      [creada!.id],
+    )
+    expect(filasBD).toEqual([
+      { ejercicio_id: 'ej:press_banca', imagen_url: uriLocal },
+      { ejercicio_id: 'ej:press_hombros', imagen_url: null },
+      { ejercicio_id: 'ej:sentadilla', imagen_url: uriSentadilla },
+    ])
+  })
+})

@@ -99,6 +99,8 @@ export interface EjercicioEnRutina {
   /** Peso de partida sugerido; se ajusta dinámicamente. NULL = sin sugerencia. */
   peso_objetivo: number | null
   descanso_segundos: number | null
+  /** URI local (WEBP) o URL remota personalizada para el ejercicio en la rutina. */
+  imagen_url?: string | null
 }
 
 export interface Ejercicio {
@@ -215,6 +217,8 @@ export interface EjercicioEnRutinaEditado {
   reps_objetivo_max: number
   peso_objetivo: number | null
   descanso_segundos: number | null
+  /** URI local (WEBP) o URL remota personalizada; NULL o ausente usa la media del catálogo. */
+  imagen_url?: string | null
 }
 
 export interface DiaRutinaEditado {

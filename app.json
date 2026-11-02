@@ -26,7 +26,15 @@
       "expo-router",
       "expo-font",
       "expo-sqlite",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GymFor accede a tu galería para asociar imágenes personalizadas a los ejercicios de tus rutinas.",
+          "cameraPermission": "GymFor accede a tu cámara para tomar fotos personalizadas de tus ejercicios.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

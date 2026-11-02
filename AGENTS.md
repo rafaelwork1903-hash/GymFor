@@ -241,3 +241,31 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Tests** (+5 tests, suite completa en 15/15 suites y 137/137 tests):
   - Nueva suite `__tests__/media.store.test.ts`: carga de media, acceso por id, fallback a placeholder cuando no existe, idempotencia sin recarga duplicada, fallo con reintento y `limpiarError`.
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 15/15 suites y 137/137 tests ✅.
+
+### 2026-11-02 — feat/imagen-ejercicio-rutina (issue #29)
+
+- **Infraestructura & Permisos**:
+  - `expo-image-picker`, `expo-image-manipulator` y `expo-file-system` instalados con `bunx expo install` (compatibles con Expo SDK 58).
+  - `app.json` configurado con el plugin oficial de `expo-image-picker` (`photosPermission` y `cameraPermission` en español, `microphonePermission: false`), respetando Continuous Native Generation (sin tocar `ios/` ni `android/`).
+- **Compresión WEBP en Cliente** (`src/utils/imagen.ts`, re-exportado en `src/utils/index.ts`):
+  - `comprimirImagen(uri, opciones?)`: usa `ImageManipulator.manipulateAsync` con `SaveFormat.WEBP`, ancho máximo por defecto de `800` px (`ANCHO_MAXIMO_IMAGEN`) sin reescalar hacia arriba cuando `anchoOriginal <= anchoMaximo`, y calidad `0.8` (`CALIDAD_COMPRESION_WEBP`).
+  - Persistencia multiplataforma: en nativo copia el archivo comprimido de caché a `Directory(Paths.document, 'ejercicios_rutina')` mediante la API OO de `expo-file-system` v58; en web solicita `base64: true` y retorna un data URI `data:image/webp;base64,...` persistente.
+  - `esUriImagenValida(uri)`: valida URLs remotas (`http`/`https`) y URIs locales válidas (`file://`, `content://`, `ph://`, `assets-library://`, `blob:`, `data:image/`).
+- **Dominio, Esquema SQL y Migraciones**:
+  - `src/domain/types.ts`: campo opcional `imagen_url?: string | null` añadido en `EjercicioEnRutina` y `EjercicioEnRutinaEditado`.
+  - `src/db/schema.ts`: `ESQUEMA_VERSION_2` (`ALTER TABLE ejercicios_en_rutina ADD COLUMN imagen_url TEXT;`) y `ESQUEMA_VERSION_2_DOWN`.
+  - `src/db/migrations.ts`: migración versión 2 (`imagen_ejercicio_en_rutina`) registrada en `MIGRACIONES` (idempotente en `inicializarBD`) y comprobación autorreparadora de la columna `imagen_url` en `repararVersionInconsistente`.
+- **Repositorio & Stores**:
+  - `src/db/repositories/rutina.repository.ts`: `crearRutina` y `guardarRutina` (ramas `INSERT` y `UPDATE` dentro de `withTransactionAsync`) persisten `imagen_url ?? null`; `obtenerRutinaDetalle` devuelve `imagen_url` vía `SELECT eer.*`.
+  - `src/store/sesion.store.ts`: `RegistroEnCurso` propaga `imagen_url` desde el ejercicio del día al iniciar sesión.
+- **UI & Reutilización**:
+  - `src/components/ejercicios/VisualEjercicio.tsx`: `MiniaturaEjercicio`, `VisualEjercicio` y `ModalVisualEjercicio` aceptan `imagenUrl?: string | null`, priorizando la imagen personalizada de la rutina sobre la media del catálogo maestro, con indicador de carga y fallback elegante ante fallo de carga.
+  - `src/components/rutinas/FormularioRutina.tsx`: nuevo bloque reutilizable `ControlImagenEjercicio` integrado tanto en `SelectorEjercicioModal` (al añadir ejercicio al día) como en `FilaEjercicio` (en cada ejercicio del día al crear o editar rutina). Soporta URL remota, selección desde galería (`mediaTypes: ['images']`) y cámara en nativo, compresión automática a WEBP antes de guardar la referencia, estados `cargando`/`error`/placeholder, vista previa en miniatura, botón **Quitar imagen** (`imagen_url = null`), bloqueo de guardado durante compresión y validación de formato de URL.
+  - `app/nueva-rutina.tsx` y `app/editar-rutina.tsx`: propagan `imagen_url` en la carga inicial y en el payload de guardado (`crearRutinaNueva` / `guardarRutinaExistente`).
+  - `app/(tabs)/sesion.tsx`: muestra la imagen personalizada del ejercicio de la rutina activa en `MiniaturaEjercicio` y en `ModalVisualEjercicio` durante el entrenamiento.
+- **Tests** (+11 tests, suite completa en 16/16 suites y 148/148 tests):
+  - `__tests__/imagen.test.ts` (NUEVO): formato de salida WEBP, redimensionado por defecto (800 px / 0.8) y personalizado, no-upscaling cuando la imagen ya es menor, persistencia en nativo (`expo-file-system`) y en web (`data:image/webp;base64`), y validación/errores.
+  - `__tests__/migrations.test.ts` y `__tests__/helpers/sqlite-adapter.ts`: validación SQL y migración real v1 → v2 idempotente sobre `node:sqlite`.
+  - `__tests__/rutinas.store.test.ts`: `guardarRutinaExistente` propagando y actualizando `imagen_url`.
+  - `__tests__/integracion.rutinas.test.ts`: persistencia, lectura, edición, eliminación (`null`) e inserción de `imagen_url` contra SQLite real.
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings nuevos), `bun run test` 16/16 suites y 148/148 tests ✅.

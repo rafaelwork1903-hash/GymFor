@@ -11,7 +11,12 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_1_DOWN } from './schema'
+import {
+  ESQUEMA_VERSION_1,
+  ESQUEMA_VERSION_1_DOWN,
+  ESQUEMA_VERSION_2,
+  ESQUEMA_VERSION_2_DOWN,
+} from './schema'
 
 export interface Migracion {
   version: number
@@ -27,6 +32,12 @@ export const MIGRACIONES: readonly Migracion[] = [
     nombre: 'esquema_inicial',
     up: ESQUEMA_VERSION_1,
     down: ESQUEMA_VERSION_1_DOWN,
+  },
+  {
+    version: 2,
+    nombre: 'imagen_ejercicio_en_rutina',
+    up: ESQUEMA_VERSION_2,
+    down: ESQUEMA_VERSION_2_DOWN,
   },
 ]
 
@@ -78,6 +89,16 @@ export async function repararVersionInconsistente(db: SQLiteDatabase): Promise<v
 
   if (faltanTablas) {
     await db.execAsync('PRAGMA user_version = 0')
+    return
+  }
+
+  if (version >= 2) {
+    const columnas = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(ejercicios_en_rutina)',
+    )
+    if (!columnas.some((col) => col.name === 'imagen_url')) {
+      await db.execAsync('PRAGMA user_version = 1')
+    }
   }
 }
 

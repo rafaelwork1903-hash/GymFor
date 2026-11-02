@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useEffect, useMemo, useState } from 'react'
-import { KeyboardAvoidingView, Modal, Platform, Pressable } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable } from 'react-native'
+import type { SvgProps } from 'react-native-svg'
 import {
   Button,
   Card,
@@ -15,9 +17,11 @@ import {
   YStack,
 } from 'tamagui'
 
+import { mediaPlaceholder } from '../../domain/media'
 import type { Ejercicio, Equipamiento, GrupoMuscular } from '../../domain/types'
 import { EQUIPAMIENTOS, GRUPOS_MUSCULARES } from '../../domain/types'
 import { useEjerciciosStore } from '../../store/ejercicios.store'
+import { comprimirImagen, esUriImagenValida } from '../../utils/imagen'
 import {
   MiniaturaEjercicio,
   ModalVisualEjercicio,
@@ -34,6 +38,7 @@ export interface EjercicioFormularioDato {
   reps_objetivo_max: number
   peso_objetivo: number | null
   descanso_segundos: number | null
+  imagen_url: string | null
 }
 
 export interface DiaFormularioDato {
@@ -65,6 +70,7 @@ export interface ValoresInicialesFormulario {
       reps_objetivo_max: number
       peso_objetivo: number | null
       descanso_segundos: number | null
+      imagen_url?: string | null
     }[]
   }[]
 }
@@ -138,6 +144,7 @@ interface EjercicioFormulario {
   reps_objetivo_max: string
   peso_objetivo: string
   descanso_segundos: string
+  imagen_url: string
 }
 
 interface DiaFormulario {
@@ -157,7 +164,10 @@ function crearDiaFormulario(orden: number): DiaFormulario {
   }
 }
 
-function crearEjercicioFormulario(ejercicio: Ejercicio): EjercicioFormulario {
+function crearEjercicioFormulario(
+  ejercicio: Ejercicio,
+  imagenUrlInicial = '',
+): EjercicioFormulario {
   return {
     key: siguienteClave('eje'),
     ejercicio_id: ejercicio.id,
@@ -166,6 +176,7 @@ function crearEjercicioFormulario(ejercicio: Ejercicio): EjercicioFormulario {
     reps_objetivo_max: '12',
     peso_objetivo: '',
     descanso_segundos: '90',
+    imagen_url: imagenUrlInicial.trim(),
   }
 }
 
@@ -196,7 +207,254 @@ function camposInvalidos(ejercicio: EjercicioFormulario): Set<keyof EjercicioFor
   if (descanso === null || descanso < 0) {
     invalidos.add('descanso_segundos')
   }
+  if (ejercicio.imagen_url.trim() !== '' && !esUriImagenValida(ejercicio.imagen_url)) {
+    invalidos.add('imagen_url')
+  }
   return invalidos
+}
+
+// ─── Control reutilizable de imagen personalizada (URL + galería/cámara) ──────
+
+interface ControlImagenEjercicioProps {
+  valor: string
+  nombreContexto: string
+  invalido?: boolean
+  deshabilitado?: boolean
+  onChange: (nuevaUri: string) => void
+  onCambioCompresion?: (comprimiendo: boolean) => void
+  onAmpliar?: () => void
+}
+
+/**
+ * Permite pegar una URL remota o seleccionar/capturar una imagen local que se
+ * comprime automáticamente a WEBP antes de guardarse en el estado del formulario.
+ */
+function ControlImagenEjercicio({
+  valor,
+  nombreContexto,
+  invalido = false,
+  deshabilitado = false,
+  onChange,
+  onCambioCompresion,
+  onAmpliar,
+}: ControlImagenEjercicioProps) {
+  const tema = useTheme()
+  const [comprimiendo, setComprimiendo] = useState(false)
+  const [errorLocal, setErrorLocal] = useState<string | null>(null)
+  const [uriErrorCarga, setUriErrorCarga] = useState<string | null>(null)
+
+  const uriLimpia = valor.trim()
+  const esArchivoLocal = /^(file:\/\/|content:\/\/|blob:|data:image\/)/i.test(uriLimpia)
+  const falloPreview = uriLimpia !== '' && uriErrorCarga === uriLimpia
+
+  const procesarSeleccion = async (origen: 'galeria' | 'camara') => {
+    setErrorLocal(null)
+    try {
+      if (Platform.OS !== 'web') {
+        const permiso =
+          origen === 'galeria'
+            ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+            : await ImagePicker.requestCameraPermissionsAsync()
+
+        if (!permiso.granted) {
+          setErrorLocal(
+            origen === 'galeria'
+              ? 'Permiso denegado para acceder a la galería.'
+              : 'Permiso denegado para usar la cámara.',
+          )
+          return
+        }
+      }
+
+      const resultado =
+        origen === 'galeria'
+          ? await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              quality: 1,
+            })
+          : await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              quality: 1,
+            })
+
+      if (resultado.canceled || !resultado.assets || resultado.assets.length === 0) {
+        return
+      }
+
+      const asset = resultado.assets[0]
+      setComprimiendo(true)
+      onCambioCompresion?.(true)
+      try {
+        const uriWebp = await comprimirImagen(
+          asset.uri,
+          asset.width > 0 ? { anchoOriginal: asset.width } : undefined,
+        )
+        onChange(uriWebp)
+      } finally {
+        setComprimiendo(false)
+        onCambioCompresion?.(false)
+      }
+    } catch (err) {
+      const detalle =
+        err instanceof Error && err.message
+          ? err.message
+          : 'No se pudo seleccionar o comprimir la imagen.'
+      setErrorLocal(detalle)
+    }
+  }
+
+  const miniatura = (
+    <YStack
+      width={42}
+      height={42}
+      borderRadius="$3"
+      overflow="hidden"
+      backgroundColor="$gray3"
+      borderWidth={1}
+      borderColor={invalido || falloPreview ? '$red8' : '$borderColor'}
+      alignItems="center"
+      justifyContent="center"
+      role="img"
+      aria-label={
+        uriLimpia
+          ? `Vista previa de imagen para ${nombreContexto}`
+          : `Sin imagen personalizada para ${nombreContexto}`
+      }
+    >
+      {comprimiendo ? (
+        <Spinner size="small" color="$blue9" />
+      ) : uriLimpia !== '' && !falloPreview ? (
+        <Image
+          source={{ uri: uriLimpia }}
+          style={{ width: 42, height: 42 }}
+          resizeMode="cover"
+          onError={() => setUriErrorCarga(uriLimpia)}
+          accessibilityLabel={`Vista previa de ${nombreContexto}`}
+        />
+      ) : (
+        (() => {
+          const PlaceholderComp = mediaPlaceholder(nombreContexto).recurso as React.FC<SvgProps>
+          return <PlaceholderComp width={30} height={30} />
+        })()
+      )}
+    </YStack>
+  )
+
+  return (
+    <YStack gap="$1.5" paddingTop="$1">
+      <Label fontSize="$1" color="$gray10">
+        Imagen personalizada (URL o galería, opcional)
+      </Label>
+
+      <XStack gap="$2" alignItems="center">
+        {onAmpliar && uriLimpia !== '' && !falloPreview ? (
+          <Pressable
+            onPress={onAmpliar}
+            accessibilityRole="button"
+            accessibilityLabel={`Ampliar imagen de ${nombreContexto}`}
+          >
+            {miniatura}
+          </Pressable>
+        ) : (
+          miniatura
+        )}
+
+        <Input
+          flex={1}
+          value={esArchivoLocal ? '' : valor}
+          onChangeText={(texto) => {
+            setErrorLocal(null)
+            onChange(texto)
+          }}
+          placeholder={
+            esArchivoLocal
+              ? 'Imagen WEBP cargada (pega URL para reemplazar)'
+              : 'https://ejemplo.com/ejercicio.jpg'
+          }
+          placeholderTextColor={tema.placeholderColor?.val}
+          autoCapitalize="none"
+          autoCorrect={false}
+          borderRadius="$3"
+          padding="$2"
+          fontSize="$2"
+          disabled={deshabilitado || comprimiendo}
+          borderWidth={invalido ? 2 : 1}
+          borderColor={invalido ? '$red8' : '$borderColor'}
+        />
+      </XStack>
+
+      <XStack gap="$2" flexWrap="wrap" alignItems="center">
+        <Button
+          size="$2"
+          backgroundColor="$gray3"
+          borderWidth={1}
+          borderColor="$borderColor"
+          color="$color"
+          disabled={deshabilitado || comprimiendo}
+          icon={<Ionicons name="images-outline" size={14} color={tema.color?.val} />}
+          onPress={() => void procesarSeleccion('galeria')}
+          aria-label={`Seleccionar imagen de galería para ${nombreContexto}`}
+        >
+          Seleccionar de galería
+        </Button>
+
+        {Platform.OS !== 'web' ? (
+          <Button
+            size="$2"
+            backgroundColor="$gray3"
+            borderWidth={1}
+            borderColor="$borderColor"
+            color="$color"
+            disabled={deshabilitado || comprimiendo}
+            icon={<Ionicons name="camera-outline" size={14} color={tema.color?.val} />}
+            onPress={() => void procesarSeleccion('camara')}
+            aria-label={`Tomar foto con cámara para ${nombreContexto}`}
+          >
+            Cámara
+          </Button>
+        ) : null}
+
+        {uriLimpia !== '' ? (
+          <Button
+            size="$2"
+            backgroundColor="transparent"
+            borderWidth={1}
+            borderColor="$red8"
+            color="$red11"
+            disabled={deshabilitado || comprimiendo}
+            icon={<Ionicons name="trash-outline" size={14} color={tema.red11?.val} />}
+            onPress={() => {
+              setErrorLocal(null)
+              onChange('')
+            }}
+            aria-label={`Quitar imagen de ${nombreContexto}`}
+          >
+            Quitar imagen
+          </Button>
+        ) : null}
+      </XStack>
+
+      {comprimiendo ? (
+        <Text fontSize="$1" color="$blue11">
+          Comprimiendo imagen en formato WEBP…
+        </Text>
+      ) : null}
+
+      {errorLocal ? (
+        <Text fontSize="$1" color="$red11">
+          {errorLocal}
+        </Text>
+      ) : invalido ? (
+        <Text fontSize="$1" color="$red11">
+          Ingresa una URL válida (http:// o https://) o selecciona de la galería.
+        </Text>
+      ) : falloPreview ? (
+        <Text fontSize="$1" color="$red11">
+          No se pudo cargar la vista previa de la imagen indicada.
+        </Text>
+      ) : null}
+    </YStack>
+  )
 }
 
 // ─── Selector de ejercicio (modal con búsqueda + filtros) ─────────────────────
@@ -206,7 +464,7 @@ interface SelectorEjercicioModalProps {
   catalogo: Ejercicio[]
   yaAñadidos: Set<string>
   onCerrar: () => void
-  onSeleccionar: (ejercicio: Ejercicio) => void
+  onSeleccionar: (ejercicio: Ejercicio, imagenUrl?: string) => void
 }
 
 function SelectorEjercicioModal({
@@ -221,13 +479,20 @@ function SelectorEjercicioModal({
   const [filtroGrupo, setFiltroGrupo] = useState<GrupoMuscular | null>(null)
   const [filtroEquipamiento, setFiltroEquipamiento] = useState<Equipamiento | null>(null)
   const [ejercicioDetalle, setEjercicioDetalle] = useState<Ejercicio | null>(null)
+  const [imagenInicial, setImagenInicial] = useState('')
+  const [comprimiendoModal, setComprimiendoModal] = useState(false)
 
   const cerrar = () => {
     setBusqueda('')
     setFiltroGrupo(null)
     setFiltroEquipamiento(null)
+    setImagenInicial('')
+    setComprimiendoModal(false)
     onCerrar()
   }
+
+  const imagenInicialInvalida =
+    imagenInicial.trim() !== '' && !esUriImagenValida(imagenInicial)
 
   const resultados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()
@@ -324,7 +589,15 @@ function SelectorEjercicioModal({
             </XStack>
           </ScrollView>
 
-          <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
+          <ControlImagenEjercicio
+            valor={imagenInicial}
+            nombreContexto="el ejercicio a añadir"
+            invalido={imagenInicialInvalida}
+            onChange={setImagenInicial}
+            onCambioCompresion={setComprimiendoModal}
+          />
+
+          <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled>
             {resultados.length === 0 ? (
               <Text fontSize="$2" color="$gray10" textAlign="center" paddingVertical="$4">
                 No hay ejercicios con ese criterio.
@@ -333,12 +606,14 @@ function SelectorEjercicioModal({
               <YStack gap="$2">
                 {resultados.map((ejercicio) => {
                   const añadido = yaAñadidos.has(ejercicio.id)
+                  const deshabilitadoSeleccion =
+                    añadido || comprimiendoModal || imagenInicialInvalida
                   return (
                     <Pressable
                       key={ejercicio.id}
-                      disabled={añadido}
+                      disabled={deshabilitadoSeleccion}
                       onPress={() => {
-                        onSeleccionar(ejercicio)
+                        onSeleccionar(ejercicio, imagenInicial)
                         cerrar()
                       }}
                       accessibilityRole="button"
@@ -404,6 +679,7 @@ function SelectorEjercicioModal({
       <ModalVisualEjercicio
         visible={ejercicioDetalle !== null}
         ejercicio={ejercicioDetalle}
+        imagenUrl={imagenInicial.trim() || null}
         onCerrar={() => setEjercicioDetalle(null)}
       />
     </Modal>
@@ -452,7 +728,8 @@ interface FilaEjercicioProps {
     valor: string,
   ) => void
   onQuitar: (clave: string) => void
-  onVerDetalle?: (ejercicio: Ejercicio) => void
+  onVerDetalle?: (ejercicio: Ejercicio, imagenUrl: string | null) => void
+  onCambioCompresion?: (comprimiendo: boolean) => void
 }
 
 function InputObjetivo({
@@ -499,10 +776,12 @@ function FilaEjercicio({
   onCambiar,
   onQuitar,
   onVerDetalle,
+  onCambioCompresion,
 }: FilaEjercicioProps) {
   const tema = useTheme()
   const invalidos = mostrarErrores ? camposInvalidos(ejercicio) : new Set<keyof EjercicioFormulario>()
   const esInvalido = (campo: keyof EjercicioFormulario) => invalidos.has(campo)
+  const imagenPersonalizada = ejercicio.imagen_url.trim() || null
 
   return (
     <YStack
@@ -518,6 +797,7 @@ function FilaEjercicio({
           <MiniaturaEjercicio
             ejercicioId={datosEjercicio.id}
             nombre={datosEjercicio.nombre}
+            imagenUrl={imagenPersonalizada}
             tamano={36}
           />
         ) : null}
@@ -534,7 +814,7 @@ function FilaEjercicio({
         </YStack>
         {datosEjercicio && onVerDetalle ? (
           <Pressable
-            onPress={() => onVerDetalle(datosEjercicio)}
+            onPress={() => onVerDetalle(datosEjercicio, imagenPersonalizada)}
             accessibilityRole="button"
             accessibilityLabel={`Ver técnica de ${datosEjercicio.nombre}`}
             hitSlop={8}
@@ -593,6 +873,20 @@ function FilaEjercicio({
           onChange={(texto) => onCambiar(dia.key, ejercicio.key, 'descanso_segundos', texto)}
         />
       </XStack>
+
+      <ControlImagenEjercicio
+        valor={ejercicio.imagen_url}
+        nombreContexto={datosEjercicio?.nombre ?? ejercicio.ejercicio_id}
+        invalido={esInvalido('imagen_url')}
+        deshabilitado={ocupado}
+        onChange={(nuevaUri) => onCambiar(dia.key, ejercicio.key, 'imagen_url', nuevaUri)}
+        onCambioCompresion={onCambioCompresion}
+        onAmpliar={
+          datosEjercicio && onVerDetalle
+            ? () => onVerDetalle(datosEjercicio, imagenPersonalizada)
+            : undefined
+        }
+      />
     </YStack>
   )
 }
@@ -615,7 +909,8 @@ interface TarjetaDiaProps {
   onQuitarDia: (clave: string) => void
   onQuitarEjercicio: (claveDia: string, claveEjercicio: string) => void
   onAnadirEjercicio: (claveDia: string) => void
-  onVerDetalle?: (ejercicio: Ejercicio) => void
+  onVerDetalle?: (ejercicio: Ejercicio, imagenUrl: string | null) => void
+  onCambioCompresion?: (comprimiendo: boolean) => void
 }
 
 function TarjetaDia({
@@ -630,6 +925,7 @@ function TarjetaDia({
   onQuitarEjercicio,
   onAnadirEjercicio,
   onVerDetalle,
+  onCambioCompresion,
 }: TarjetaDiaProps) {
   const tema = useTheme()
   const ejerciciosPorId = useMemo(
@@ -712,6 +1008,7 @@ function TarjetaDia({
               onCambiar={onCambiarEjercicio}
               onQuitar={(clave) => onQuitarEjercicio(dia.key, clave)}
               onVerDetalle={onVerDetalle}
+              onCambioCompresion={onCambioCompresion}
             />
           ))
         )}
@@ -775,6 +1072,7 @@ export function FormularioRutina({
             e.descanso_segundos !== null && e.descanso_segundos !== undefined
               ? String(e.descanso_segundos)
               : '',
+          imagen_url: e.imagen_url ?? '',
         })),
       }))
     }
@@ -784,7 +1082,17 @@ export function FormularioRutina({
   const [diaSelector, setDiaSelector] = useState<string | null>(null)
   const [intentadoGuardar, setIntentadoGuardar] = useState(false)
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null)
-  const [ejercicioDetalleVisual, setEjercicioDetalleVisual] = useState<Ejercicio | null>(null)
+  const [detalleVisual, setDetalleVisual] = useState<{
+    ejercicio: Ejercicio
+    imagenUrl: string | null
+  } | null>(null)
+  const [procesosCompresion, setProcesosCompresion] = useState(0)
+
+  const registrarCambioCompresion = (comprimiendo: boolean) => {
+    setProcesosCompresion((actual) => Math.max(0, actual + (comprimiendo ? 1 : -1)))
+  }
+
+  const comprimiendoImagen = procesosCompresion > 0
 
   useEffect(() => {
     void cargarEjercicios()
@@ -826,11 +1134,17 @@ export function FormularioRutina({
     setDias((diasActuales) => diasActuales.filter((dia) => dia.key !== clave))
   }
 
-  const anadirEjercicio = (claveDia: string, ejercicio: Ejercicio) => {
+  const anadirEjercicio = (claveDia: string, ejercicio: Ejercicio, imagenUrl?: string) => {
     setDias((diasActuales) =>
       diasActuales.map((dia) =>
         dia.key === claveDia
-          ? { ...dia, ejercicios: [...dia.ejercicios, crearEjercicioFormulario(ejercicio)] }
+          ? {
+              ...dia,
+              ejercicios: [
+                ...dia.ejercicios,
+                crearEjercicioFormulario(ejercicio, imagenUrl),
+              ],
+            }
           : dia,
       ),
     )
@@ -870,9 +1184,15 @@ export function FormularioRutina({
           const nombreEjercicio =
             catalogo.find((e) => e.id === ejercicio.ejercicio_id)?.nombre ??
             ejercicio.ejercicio_id
-          setErrorValidacion(
-            `Revisa los objetivos de «${nombreEjercicio}» en el día «${dia.nombre_dia.trim()}».`,
-          )
+          if (invalidos.size === 1 && invalidos.has('imagen_url')) {
+            setErrorValidacion(
+              `Revisa la imagen de «${nombreEjercicio}» en el día «${dia.nombre_dia.trim()}»: usa una URL válida (http/https) o selecciona desde la galería.`,
+            )
+          } else {
+            setErrorValidacion(
+              `Revisa los objetivos de «${nombreEjercicio}» en el día «${dia.nombre_dia.trim()}».`,
+            )
+          }
           return null
         }
       }
@@ -899,6 +1219,8 @@ export function FormularioRutina({
             ejercicio.descanso_segundos.trim() === ''
               ? null
               : aEntero(ejercicio.descanso_segundos),
+          imagen_url:
+            ejercicio.imagen_url.trim() === '' ? null : ejercicio.imagen_url.trim(),
         })),
       })),
     }
@@ -1036,7 +1358,10 @@ export function FormularioRutina({
                 onQuitarDia={quitarDia}
                 onQuitarEjercicio={quitarEjercicio}
                 onAnadirEjercicio={setDiaSelector}
-                onVerDetalle={setEjercicioDetalleVisual}
+                onVerDetalle={(ejercicio, imagenUrl) =>
+                  setDetalleVisual({ ejercicio, imagenUrl })
+                }
+                onCambioCompresion={registrarCambioCompresion}
               />
             ))}
 
@@ -1069,11 +1394,19 @@ export function FormularioRutina({
           color="$gray1"
           fontWeight="bold"
           pressStyle={{ opacity: 0.85 }}
-          disabled={ocupado}
-          icon={ocupado ? undefined : <Ionicons name="checkmark-circle" size={18} color={tema.gray1?.val} />}
+          disabled={ocupado || comprimiendoImagen}
+          icon={
+            ocupado || comprimiendoImagen ? undefined : (
+              <Ionicons name="checkmark-circle" size={18} color={tema.gray1?.val} />
+            )
+          }
           onPress={() => void guardar()}
         >
-          {ocupado ? 'Guardando…' : textoBotonGuardar}
+          {comprimiendoImagen
+            ? 'Comprimiendo imagen…'
+            : ocupado
+              ? 'Guardando…'
+              : textoBotonGuardar}
         </Button>
       </YStack>
 
@@ -1082,17 +1415,18 @@ export function FormularioRutina({
         catalogo={catalogo}
         yaAñadidos={idsYaAñadidos}
         onCerrar={() => setDiaSelector(null)}
-        onSeleccionar={(ejercicio) => {
+        onSeleccionar={(ejercicio, imagenUrl) => {
           if (diaSeleccionado) {
-            anadirEjercicio(diaSeleccionado.key, ejercicio)
+            anadirEjercicio(diaSeleccionado.key, ejercicio, imagenUrl)
           }
         }}
       />
 
       <ModalVisualEjercicio
-        visible={ejercicioDetalleVisual !== null}
-        ejercicio={ejercicioDetalleVisual}
-        onCerrar={() => setEjercicioDetalleVisual(null)}
+        visible={detalleVisual !== null}
+        ejercicio={detalleVisual?.ejercicio ?? null}
+        imagenUrl={detalleVisual?.imagenUrl ?? null}
+        onCerrar={() => setDetalleVisual(null)}
       />
     </YStack>
   )

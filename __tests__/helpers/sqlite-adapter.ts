@@ -2,23 +2,32 @@ import { DatabaseSync } from 'node:sqlite'
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
-import { ESQUEMA_VERSION_1 } from '../../src/db/schema'
+import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2 } from '../../src/db/schema'
 
 /**
  * Adaptador compartido de `node:sqlite` (en memoria) a la interfaz de
  * `expo-sqlite` que usan los repositorios.
  *
- * Se aplica el esquema REAL (`ESQUEMA_VERSION_1`) con `PRAGMA foreign_keys
- * = ON`, así los tests de integración validan FKs, NOT NULL y CASCADE de
- * verdad (los tests unitarios mockean repositorios y no lo detectan).
+ * Se aplica el esquema REAL (`ESQUEMA_VERSION_1` + `ESQUEMA_VERSION_2`) con
+ * `PRAGMA foreign_keys = ON`, así los tests de integración validan FKs,
+ * NOT NULL y CASCADE de verdad (los tests unitarios mockean repositorios y
+ * no lo detectan).
  */
 export class AdaptadorSQLite {
   private readonly db: DatabaseSync
 
-  constructor() {
+  constructor(opciones: { versionInicial?: 0 | 1 | 2 } = {}) {
+    const versionInicial = opciones.versionInicial ?? 2
     this.db = new DatabaseSync(':memory:')
     this.db.exec('PRAGMA foreign_keys = ON')
-    this.db.exec(ESQUEMA_VERSION_1)
+    if (versionInicial >= 1) {
+      this.db.exec(ESQUEMA_VERSION_1)
+      this.db.exec('PRAGMA user_version = 1')
+    }
+    if (versionInicial >= 2) {
+      this.db.exec(ESQUEMA_VERSION_2)
+      this.db.exec('PRAGMA user_version = 2')
+    }
   }
 
   async runAsync(sql: string, params: unknown[] = []): Promise<unknown> {

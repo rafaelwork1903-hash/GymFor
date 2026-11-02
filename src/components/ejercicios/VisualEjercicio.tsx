@@ -62,19 +62,28 @@ export interface MiniaturaEjercicioProps {
   ejercicioId: string
   nombre: string
   tamano?: number
+  /** URI local o URL remota personalizada (prioridad sobre la media del catálogo). */
+  imagenUrl?: string | null
 }
 
 /**
  * Miniatura compacta para listados de ejercicios.
+ * Si recibe `imagenUrl`, muestra la imagen personalizada del usuario con fallback a placeholder.
  */
 export function MiniaturaEjercicio({
   ejercicioId,
   nombre,
   tamano = 52,
+  imagenUrl,
 }: MiniaturaEjercicioProps) {
   const obtenerMedia = useMediaStore((s) => s.obtenerMedia)
+  const uriPersonalizada = imagenUrl?.trim() ? imagenUrl.trim() : null
   const media = obtenerMedia(ejercicioId, nombre)
-  const [errorCarga, setErrorCarga] = useState(false)
+  const [uriFallida, setUriFallida] = useState<string | null>(null)
+
+  const etiquetaAccesible = uriPersonalizada
+    ? `Imagen personalizada de ${nombre}`
+    : media.accessibilityLabel
 
   return (
     <YStack
@@ -88,13 +97,23 @@ export function MiniaturaEjercicio({
       alignItems="center"
       justifyContent="center"
       role="img"
-      aria-label={media.accessibilityLabel}
+      aria-label={etiquetaAccesible}
     >
-      {errorCarga ? (
-        (() => {
-          const Placeholder = mediaPlaceholder(nombre).recurso as React.FC<SvgProps>
-          return <Placeholder width={tamano * 0.8} height={tamano * 0.8} />
-        })()
+      {uriPersonalizada ? (
+        uriFallida === uriPersonalizada ? (
+          (() => {
+            const Placeholder = mediaPlaceholder(nombre).recurso as React.FC<SvgProps>
+            return <Placeholder width={tamano * 0.8} height={tamano * 0.8} />
+          })()
+        ) : (
+          <Image
+            source={{ uri: uriPersonalizada }}
+            style={{ width: tamano, height: tamano }}
+            resizeMode="cover"
+            onError={() => setUriFallida(uriPersonalizada)}
+            accessibilityLabel={etiquetaAccesible}
+          />
+        )
       ) : media.tipo === 'svg' && media.recurso ? (
         (() => {
           const SvgComp = media.recurso as React.FC<SvgProps>
@@ -107,12 +126,12 @@ export function MiniaturaEjercicio({
           resizeMode="cover"
           accessibilityLabel={media.accessibilityLabel}
         />
-      ) : media.tipo === 'url' && media.uri ? (
+      ) : media.tipo === 'url' && media.uri && uriFallida !== media.uri ? (
         <Image
           source={{ uri: media.uri }}
           style={{ width: tamano, height: tamano }}
           resizeMode="cover"
-          onError={() => setErrorCarga(true)}
+          onError={() => setUriFallida(media.uri ?? '')}
           accessibilityLabel={media.accessibilityLabel}
         />
       ) : (
@@ -128,6 +147,8 @@ export function MiniaturaEjercicio({
 export interface VisualEjercicioProps {
   ejercicio: Ejercicio
   media?: MediaEjercicio
+  /** URI personalizada (local o remota) asociada al ejercicio en la rutina. */
+  imagenUrl?: string | null
   altoMedia?: number
 }
 
@@ -137,13 +158,29 @@ export interface VisualEjercicioProps {
 export function VisualEjercicio({
   ejercicio,
   media: mediaProp,
+  imagenUrl,
   altoMedia = 200,
 }: VisualEjercicioProps) {
   const tema = useTheme()
   const obtenerMedia = useMediaStore((s) => s.obtenerMedia)
-  const media = mediaProp ?? obtenerMedia(ejercicio.id, ejercicio.nombre)
-  const [cargandoRemoto, setCargandoRemoto] = useState(false)
-  const [errorRemoto, setErrorRemoto] = useState(false)
+  const uriPersonalizada = imagenUrl?.trim() ? imagenUrl.trim() : null
+  const media: MediaEjercicio =
+    mediaProp ??
+    (uriPersonalizada
+      ? {
+          id: `personalizada:${ejercicio.id}`,
+          ejercicioId: ejercicio.id,
+          tipo: 'url',
+          uri: uriPersonalizada,
+          alt: `Imagen personalizada de ${ejercicio.nombre}`,
+          accessibilityLabel: `Imagen personalizada de ${ejercicio.nombre}`,
+        }
+      : obtenerMedia(ejercicio.id, ejercicio.nombre))
+
+  const [uriCargando, setUriCargando] = useState<string | null>(null)
+  const [uriError, setUriError] = useState<string | null>(null)
+  const cargandoRemoto = Boolean(media.uri && uriCargando === media.uri)
+  const errorRemoto = Boolean(media.uri && uriError === media.uri)
 
   const esCompuesto = ejercicio.es_compuesto === 1
   const tieneInstrucciones = Boolean(ejercicio.instrucciones?.trim())
@@ -188,7 +225,7 @@ export function VisualEjercicio({
               return <Placeholder width={altoMedia * 0.7} height={altoMedia * 0.7} />
             })()}
             <Text fontSize="$2" color="$gray10" textAlign="center">
-              No se pudo cargar la imagen remota.
+              No se pudo cargar la imagen.
             </Text>
           </YStack>
         ) : media.tipo === 'svg' && media.recurso ? (
@@ -219,11 +256,11 @@ export function VisualEjercicio({
             source={{ uri: media.uri }}
             style={{ width: '100%', height: altoMedia }}
             resizeMode="cover"
-            onLoadStart={() => setCargandoRemoto(true)}
-            onLoadEnd={() => setCargandoRemoto(false)}
+            onLoadStart={() => setUriCargando(media.uri ?? null)}
+            onLoadEnd={() => setUriCargando(null)}
             onError={() => {
-              setCargandoRemoto(false)
-              setErrorRemoto(true)
+              setUriCargando(null)
+              setUriError(media.uri ?? null)
             }}
             accessibilityLabel={media.accessibilityLabel}
           />
@@ -350,6 +387,8 @@ export function VisualEjercicio({
 export interface ModalVisualEjercicioProps {
   visible: boolean
   ejercicio: Ejercicio | null
+  /** URI personalizada asociada al ejercicio en la rutina (opcional). */
+  imagenUrl?: string | null
   onCerrar: () => void
 }
 
@@ -359,6 +398,7 @@ export interface ModalVisualEjercicioProps {
 export function ModalVisualEjercicio({
   visible,
   ejercicio,
+  imagenUrl,
   onCerrar,
 }: ModalVisualEjercicioProps) {
   const tema = useTheme()
@@ -417,7 +457,7 @@ export function ModalVisualEjercicio({
             </XStack>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <VisualEjercicio ejercicio={ejercicio} />
+              <VisualEjercicio ejercicio={ejercicio} imagenUrl={imagenUrl} />
             </ScrollView>
 
             <Button

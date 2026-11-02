@@ -30,6 +30,7 @@ interface RegistroEnCurso {
   registro_id: string
   ejercicio_id: string
   ejercicio_nombre: string
+  imagen_url?: string | null
   rpe_ejercicio: number | null
   series: SerieReal[]
 }
@@ -136,6 +137,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         registro_id: generarId(),
         ejercicio_id: ej.ejercicio_id,
         ejercicio_nombre: ej.ejercicio_nombre,
+        imagen_url: ej.imagen_url ?? null,
         rpe_ejercicio: null,
         series: [] as SerieReal[],
       }))
