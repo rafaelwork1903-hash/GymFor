@@ -2,7 +2,9 @@ import { DatabaseSync } from 'node:sqlite'
 
 import type { SQLiteDatabase } from 'expo-sqlite'
 
+import { obtenerSesionDetalle } from '../src/db/repositories/sesion.repository'
 import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2 } from '../src/db/schema'
+import { calcularVolumenTotal } from '../src/domain/metrics'
 import { useSesionStore } from '../src/store/sesion.store'
 
 /**
@@ -313,5 +315,154 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
     // El detalle cacheado (mismo objeto) se reutiliza, sin nueva lectura.
     expect(estado.detallesCompletos[0]).toBe(cachePrevio[0])
     expect(estado.detallesCompletos).toHaveLength(1)
+  })
+
+  describe('edición y eliminación de series en sesión activa (issue #31)', () => {
+    it('actualizarSerie persiste peso, reps, RPE y notas en SQLite y obtenerSesionDetalle los relee', async () => {
+      const { iniciarSesion, agregarSerie, actualizarSerie } = useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      const sesionId = useSesionStore.getState().sesionActual?.sesion.id!
+      const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+
+      await agregarSerie(registroId, nuevaSerie(1))
+      await agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 62.5, reps_realizadas: 9 })
+
+      const serie1Id = useSesionStore.getState().sesionActual?.registros[0].series[0].id!
+      expect(serie1Id).toBeTruthy()
+
+      await actualizarSerie(registroId, serie1Id, {
+        peso_levantado: 67.5,
+        reps_realizadas: 8,
+        rpe_serie: 9,
+        notas: 'pausa en el pecho',
+      })
+
+      const estado = useSesionStore.getState()
+      expect(estado.error).toBeNull()
+      expect(estado.sesionActual?.registros[0].series[0]).toMatchObject({
+        id: serie1Id,
+        numero_serie: 1,
+        peso_levantado: 67.5,
+        reps_realizadas: 8,
+        rpe_serie: 9,
+        notas: 'pausa en el pecho',
+      })
+      // La segunda serie no se altera
+      expect(estado.sesionActual?.registros[0].series[1].peso_levantado).toBe(62.5)
+
+      const detalleBD = await obtenerSesionDetalle(adaptador as unknown as SQLiteDatabase, sesionId)
+      expect(detalleBD?.registros[0].series).toHaveLength(2)
+      expect(detalleBD?.registros[0].series[0]).toMatchObject({
+        id: serie1Id,
+        numero_serie: 1,
+        peso_levantado: 67.5,
+        reps_realizadas: 8,
+        rpe_serie: 9,
+        notas: 'pausa en el pecho',
+      })
+      expect(detalleBD?.registros[0].series[1].peso_levantado).toBe(62.5)
+    })
+
+    it('eliminarSerie intermedia renumera 1..N de forma contigua tanto en BD como en el store', async () => {
+      const { iniciarSesion, agregarSerie, eliminarSerie } = useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+
+      await agregarSerie(registroId, { ...nuevaSerie(1), peso_levantado: 60 })
+      await agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 65 })
+      await agregarSerie(registroId, { ...nuevaSerie(3), peso_levantado: 70 })
+      await agregarSerie(registroId, { ...nuevaSerie(4), peso_levantado: 72.5 })
+
+      const seriesIniciales = useSesionStore.getState().sesionActual?.registros[0].series!
+      const serieIntermediaId = seriesIniciales[1].id // S2 (65 kg)
+
+      await eliminarSerie(registroId, serieIntermediaId)
+
+      const estado = useSesionStore.getState()
+      expect(estado.error).toBeNull()
+      const seriesStore = estado.sesionActual?.registros[0].series ?? []
+      expect(seriesStore.map((s) => ({ numero: s.numero_serie, peso: s.peso_levantado }))).toEqual([
+        { numero: 1, peso: 60 },
+        { numero: 2, peso: 70 },
+        { numero: 3, peso: 72.5 },
+      ])
+
+      const seriesBD = adaptador.leer<{ numero_serie: number; peso_levantado: number }>(
+        'SELECT numero_serie, peso_levantado FROM series WHERE registro_id = ? ORDER BY numero_serie',
+        [registroId],
+      )
+      expect(seriesBD).toEqual([
+        { numero_serie: 1, peso_levantado: 60 },
+        { numero_serie: 2, peso_levantado: 70 },
+        { numero_serie: 3, peso_levantado: 72.5 },
+      ])
+    })
+
+    it('tras eliminar una serie intermedia y volver a añadir con series.length + 1 no hay colisión con UNIQUE(registro_id, numero_serie)', async () => {
+      const { iniciarSesion, agregarSerie, eliminarSerie } = useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+
+      await agregarSerie(registroId, { ...nuevaSerie(1), peso_levantado: 50 })
+      await agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 55 })
+      await agregarSerie(registroId, { ...nuevaSerie(3), peso_levantado: 60 })
+
+      const serie2Id = useSesionStore.getState().sesionActual?.registros[0].series[1].id!
+      await eliminarSerie(registroId, serie2Id)
+
+      // Tal como hace la pantalla de Sesión: numero_serie = series.length + 1
+      const siguienteNumero =
+        (useSesionStore.getState().sesionActual?.registros[0].series.length ?? 0) + 1
+      expect(siguienteNumero).toBe(3)
+
+      await agregarSerie(registroId, { ...nuevaSerie(siguienteNumero), peso_levantado: 62.5 })
+
+      const estado = useSesionStore.getState()
+      expect(estado.error).toBeNull()
+      const seriesStore = estado.sesionActual?.registros[0].series ?? []
+      expect(seriesStore.map((s) => ({ numero: s.numero_serie, peso: s.peso_levantado }))).toEqual([
+        { numero: 1, peso: 50 },
+        { numero: 2, peso: 60 },
+        { numero: 3, peso: 62.5 },
+      ])
+
+      const seriesBD = adaptador.leer<{ numero_serie: number; peso_levantado: number }>(
+        'SELECT numero_serie, peso_levantado FROM series WHERE registro_id = ? ORDER BY numero_serie',
+        [registroId],
+      )
+      expect(seriesBD).toEqual([
+        { numero_serie: 1, peso_levantado: 50 },
+        { numero_serie: 2, peso_levantado: 60 },
+        { numero_serie: 3, peso_levantado: 62.5 },
+      ])
+    })
+
+    it('regresión: el volumen en vivo de la sesión refleja la edición y eliminación de series', async () => {
+      const { iniciarSesion, agregarSerie, actualizarSerie, eliminarSerie } =
+        useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      const registroId = useSesionStore.getState().sesionActual?.registros[0].registro_id!
+
+      // S1: 60 × 10 = 600; S2: 70 × 8 = 560 -> total 1160
+      await agregarSerie(registroId, { ...nuevaSerie(1), peso_levantado: 60, reps_realizadas: 10 })
+      await agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 70, reps_realizadas: 8 })
+
+      const calcularVolumenEnCurso = () =>
+        useSesionStore
+          .getState()
+          .sesionActual!.registros.reduce((acc, r) => acc + calcularVolumenTotal(r.series), 0)
+
+      expect(calcularVolumenEnCurso()).toBe(1160)
+
+      // Editar S1 a 65 × 10 = 650 -> nuevo total 1210
+      const serie1Id = useSesionStore.getState().sesionActual?.registros[0].series[0].id!
+      await actualizarSerie(registroId, serie1Id, { peso_levantado: 65, reps_realizadas: 10 })
+      expect(calcularVolumenEnCurso()).toBe(1210)
+
+      // Eliminar S2 (560) -> nuevo total 650
+      const serie2Id = useSesionStore.getState().sesionActual?.registros[0].series[1].id!
+      await eliminarSerie(registroId, serie2Id)
+      expect(calcularVolumenEnCurso()).toBe(650)
+    })
   })
 })

@@ -24,6 +24,14 @@ export type SesionDetalle = SesionEntrenamiento & {
   registros: RegistroEjercicioDetalle[]
 }
 
+/** Campos editables de una serie registrada (`numero_serie` no es editable por el usuario). */
+export type CambiosSerie = Partial<
+  Pick<
+    SerieReal,
+    'peso_levantado' | 'reps_realizadas' | 'rpe_serie' | 'rir' | 'completada' | 'notas'
+  >
+>
+
 /** Nueva sesión completa con sus ejercicios y series ejecutadas. */
 export interface NuevaSesion {
   sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
@@ -203,4 +211,77 @@ export async function agregarSerie(
  */
 export async function eliminarSesion(db: SQLiteDatabase, id: string): Promise<void> {
   await db.runAsync('DELETE FROM sesiones WHERE id = ?', [id])
+}
+
+/**
+ * Actualiza los valores editables de una serie ya registrada.
+ * Valida que la fila exista e ignora `numero_serie` (gestionado internamente).
+ */
+export async function actualizarSerie(
+  db: SQLiteDatabase,
+  serieId: string,
+  cambios: CambiosSerie,
+): Promise<SerieReal> {
+  const actual = await db.getFirstAsync<SerieReal>('SELECT * FROM series WHERE id = ?', [serieId])
+  if (!actual) {
+    throw new Error(`Serie no encontrada: ${serieId}`)
+  }
+
+  const completadaRaw =
+    cambios.completada !== undefined ? cambios.completada : actual.completada
+  const actualizada: SerieReal = {
+    id: actual.id,
+    registro_id: actual.registro_id,
+    numero_serie: actual.numero_serie,
+    peso_levantado:
+      cambios.peso_levantado !== undefined ? cambios.peso_levantado : actual.peso_levantado,
+    reps_realizadas:
+      cambios.reps_realizadas !== undefined ? cambios.reps_realizadas : actual.reps_realizadas,
+    rpe_serie: cambios.rpe_serie !== undefined ? cambios.rpe_serie : actual.rpe_serie,
+    rir: cambios.rir !== undefined ? cambios.rir : actual.rir,
+    completada: completadaRaw === 1 ? 1 : 0,
+    notas: cambios.notas !== undefined ? cambios.notas : actual.notas,
+  }
+
+  await db.runAsync(
+    `UPDATE series
+     SET peso_levantado = ?, reps_realizadas = ?, rpe_serie = ?, rir = ?, completada = ?, notas = ?
+     WHERE id = ?`,
+    [
+      actualizada.peso_levantado,
+      actualizada.reps_realizadas,
+      actualizada.rpe_serie,
+      actualizada.rir,
+      actualizada.completada,
+      actualizada.notas,
+      serieId,
+    ],
+  )
+
+  return actualizada
+}
+
+/**
+ * Elimina una serie registrada y renumera de forma contigua (1..N) las series
+ * posteriores del mismo registro dentro de una transacción `withTransactionAsync`
+ * (portátil nativo + web), manteniendo la invariante de `UNIQUE(registro_id, numero_serie)`.
+ */
+export async function eliminarSerie(db: SQLiteDatabase, serieId: string): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const actual = await db.getFirstAsync<Pick<SerieReal, 'registro_id' | 'numero_serie'>>(
+      'SELECT registro_id, numero_serie FROM series WHERE id = ?',
+      [serieId],
+    )
+    if (!actual) {
+      throw new Error(`Serie no encontrada: ${serieId}`)
+    }
+
+    await db.runAsync('DELETE FROM series WHERE id = ?', [serieId])
+    await db.runAsync(
+      `UPDATE series
+       SET numero_serie = numero_serie - 1
+       WHERE registro_id = ? AND numero_serie > ?`,
+      [actual.registro_id, actual.numero_serie],
+    )
+  })
 }

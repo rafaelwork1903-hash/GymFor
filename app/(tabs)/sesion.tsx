@@ -25,7 +25,7 @@ import {
 import { useConfiguracionStore } from '../../src/store/configuracion.store'
 import { useEjerciciosStore } from '../../src/store/ejercicios.store'
 import { useRutinasStore } from '../../src/store/rutinas.store'
-import { useSesionStore } from '../../src/store/sesion.store'
+import { useSesionStore, type CambiosSerie } from '../../src/store/sesion.store'
 
 /** Registro en curso tal como lo expone `sesionActual` (subconjunto estructural). */
 interface RegistroSesion {
@@ -73,8 +73,10 @@ interface TarjetaEjercicioProps {
   registro: RegistroSesion
   /** Objetivo del ejercicio en el día de la sesión (si está disponible). */
   objetivo?: EjercicioEnRutinaDetalle
-  /** Deshabilita el botón mientras hay una operación en curso. */
+  /** Deshabilita los controles mientras hay una operación en curso. */
   ocupado: boolean
+  /** ID de la serie que se está editando o eliminando en este instante. */
+  serieOcupadaId: string | null
   onAgregar: (
     registroId: string,
     serie: {
@@ -87,6 +89,8 @@ interface TarjetaEjercicioProps {
       notas: null
     },
   ) => void
+  onEditarSerie: (registroId: string, ejercicioNombre: string, serie: SerieReal) => void
+  onEliminarSerie: (registroId: string, serie: SerieReal) => void
   onVerDetalle?: () => void
 }
 
@@ -95,7 +99,10 @@ function TarjetaEjercicio({
   registro,
   objetivo,
   ocupado,
+  serieOcupadaId,
   onAgregar,
+  onEditarSerie,
+  onEliminarSerie,
   onVerDetalle,
 }: TarjetaEjercicioProps) {
   const [peso, setPeso] = useState('')
@@ -178,18 +185,63 @@ function TarjetaEjercicio({
       </XStack>
 
       {registro.series.length > 0 ? (
-        <YStack backgroundColor="$gray3" borderRadius="$3" padding="$2" gap="$1">
-          {registro.series.map((serie) => (
-            <XStack key={serie.id} justifyContent="space-between" gap="$2">
-              <Text fontSize="$2" color="$gray11">
-                S{serie.numero_serie}
-              </Text>
-              <Text fontSize="$2" color="$gray11" flex={1} textAlign="right">
-                {serie.peso_levantado} kg × {serie.reps_realizadas}
-                {serie.rpe_serie != null ? ` · RPE ${serie.rpe_serie}` : ''}
-              </Text>
-            </XStack>
-          ))}
+        <YStack backgroundColor="$gray3" borderRadius="$3" padding="$2" gap="$1.5">
+          {registro.series.map((serie) => {
+            const persistiendoFila = serieOcupadaId === serie.id
+            return (
+              <XStack
+                key={serie.id}
+                justifyContent="space-between"
+                alignItems="center"
+                gap="$2"
+                paddingVertical="$1"
+                opacity={persistiendoFila ? 0.55 : 1}
+              >
+                <YStack flex={1} gap="$0.5">
+                  <XStack alignItems="center" gap="$2">
+                    <Text fontSize="$2" fontWeight="600" color="$gray11">
+                      S{serie.numero_serie}
+                    </Text>
+                    <Text fontSize="$2" color="$gray11" flex={1}>
+                      {serie.peso_levantado} kg × {serie.reps_realizadas}
+                      {serie.rpe_serie != null ? ` · RPE ${serie.rpe_serie}` : ''}
+                    </Text>
+                  </XStack>
+                  {serie.notas ? (
+                    <Text fontSize="$1" color="$gray10" numberOfLines={2}>
+                      {serie.notas}
+                    </Text>
+                  ) : null}
+                </YStack>
+
+                <XStack alignItems="center" gap="$2.5">
+                  {persistiendoFila ? <Spinner size="small" color="$color" /> : null}
+                  <Pressable
+                    disabled={ocupado}
+                    onPress={() =>
+                      onEditarSerie(registro.registro_id, registro.ejercicio_nombre, serie)
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Editar serie S${serie.numero_serie} de ${registro.ejercicio_nombre}`}
+                    hitSlop={8}
+                    style={{ opacity: ocupado ? 0.45 : 1 }}
+                  >
+                    <Ionicons name="pencil-outline" size={18} color={tema.gray11?.val} />
+                  </Pressable>
+                  <Pressable
+                    disabled={ocupado}
+                    onPress={() => onEliminarSerie(registro.registro_id, serie)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Eliminar serie S${serie.numero_serie} de ${registro.ejercicio_nombre}`}
+                    hitSlop={8}
+                    style={{ opacity: ocupado ? 0.45 : 1 }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={tema.red11?.val} />
+                  </Pressable>
+                </XStack>
+              </XStack>
+            )
+          })}
         </YStack>
       ) : (
         <Text fontSize="$2" color="$gray9">
@@ -255,6 +307,253 @@ function TarjetaEjercicio({
         </Text>
       ) : null}
     </Card>
+  )
+}
+
+interface SerieEnEdicion {
+  registroId: string
+  ejercicioNombre: string
+  serie: SerieReal
+}
+
+interface FormularioEditarSerieProps {
+  objetivo: SerieEnEdicion
+  ocupado: boolean
+  error: string | null
+  onCerrar: () => void
+  onGuardar: (registroId: string, serieId: string, cambios: CambiosSerie) => Promise<boolean>
+}
+
+/** Contenido del modal de edición de serie; se monta por `serie.id` sin efectos. */
+function FormularioEditarSerie({
+  objetivo,
+  ocupado,
+  error,
+  onCerrar,
+  onGuardar,
+}: FormularioEditarSerieProps) {
+  const { serie, registroId, ejercicioNombre } = objetivo
+  const [peso, setPeso] = useState(String(serie.peso_levantado))
+  const [reps, setReps] = useState(String(serie.reps_realizadas))
+  const [rpe, setRpe] = useState(serie.rpe_serie != null ? String(serie.rpe_serie) : '')
+  const [notas, setNotas] = useState(serie.notas ?? '')
+  const [aviso, setAviso] = useState<string | null>(null)
+  const tema = useTheme()
+
+  const guardar = async () => {
+    const pesoNum = aNumero(peso)
+    const repsNum = aNumero(reps)
+    if (pesoNum === null || pesoNum < 0) {
+      setAviso('Ingresa un peso válido en kg (ej. 62,5).')
+      return
+    }
+    if (repsNum === null || repsNum < 0 || !Number.isInteger(repsNum)) {
+      setAviso('Ingresa las repeticiones (número entero).')
+      return
+    }
+    const rpeNum = aRPE(rpe)
+    if (rpeNum === 'invalido') {
+      setAviso('El RPE debe estar entre 1 y 10, o vacío.')
+      return
+    }
+    setAviso(null)
+    await onGuardar(registroId, serie.id, {
+      peso_levantado: pesoNum,
+      reps_realizadas: repsNum,
+      rpe_serie: rpeNum,
+      notas: notas.trim() === '' ? null : notas.trim(),
+    })
+  }
+
+  return (
+    <YStack
+      backgroundColor="$background"
+      borderTopLeftRadius="$6"
+      borderTopRightRadius="$6"
+      padding="$4"
+      paddingBottom="$6"
+      gap="$3"
+      borderWidth={1}
+      borderColor="$borderColor"
+    >
+      <YStack gap="$0.5">
+        <Text fontSize="$5" fontWeight="bold" color="$color">
+          Editar serie S{serie.numero_serie}
+        </Text>
+        <Text fontSize="$2" color="$gray10" numberOfLines={1}>
+          {ejercicioNombre}
+        </Text>
+      </YStack>
+
+      <XStack gap="$2">
+        <YStack flex={1} gap="$1">
+          <Label fontSize="$2" color="$gray10">
+            Peso (kg)
+          </Label>
+          <Input
+            keyboardType="numeric"
+            value={peso}
+            disabled={ocupado}
+            onChangeText={(texto) => {
+              setPeso(texto)
+              setAviso(null)
+            }}
+            placeholder="Ej. 62,5"
+            placeholderTextColor={tema.placeholderColor?.val}
+            borderRadius="$3"
+            padding="$2"
+          />
+        </YStack>
+
+        <YStack flex={1} gap="$1">
+          <Label fontSize="$2" color="$gray10">
+            Repeticiones
+          </Label>
+          <Input
+            keyboardType="numeric"
+            value={reps}
+            disabled={ocupado}
+            onChangeText={(texto) => {
+              setReps(texto)
+              setAviso(null)
+            }}
+            placeholder="Ej. 10"
+            placeholderTextColor={tema.placeholderColor?.val}
+            borderRadius="$3"
+            padding="$2"
+          />
+        </YStack>
+
+        <YStack flex={0.8} gap="$1">
+          <Label fontSize="$2" color="$gray10">
+            RPE (1-10)
+          </Label>
+          <Input
+            keyboardType="numeric"
+            value={rpe}
+            disabled={ocupado}
+            onChangeText={(texto) => {
+              setRpe(texto)
+              setAviso(null)
+            }}
+            placeholder="Opc."
+            placeholderTextColor={tema.placeholderColor?.val}
+            borderRadius="$3"
+            padding="$2"
+          />
+        </YStack>
+      </XStack>
+
+      <YStack gap="$1">
+        <Label fontSize="$2" color="$gray10">
+          Notas de la serie (opcional)
+        </Label>
+        <TextArea
+          value={notas}
+          disabled={ocupado}
+          onChangeText={(texto) => {
+            setNotas(texto)
+            setAviso(null)
+          }}
+          placeholder="Sensaciones, agarre, tempo…"
+          placeholderTextColor={tema.placeholderColor?.val}
+          borderRadius="$3"
+          padding="$2"
+          numberOfLines={2}
+        />
+      </YStack>
+
+      {aviso ? (
+        <Text fontSize="$2" color="$red11">
+          {aviso}
+        </Text>
+      ) : null}
+
+      {error ? (
+        <Text fontSize="$2" color="$red11">
+          {error}
+        </Text>
+      ) : null}
+
+      <XStack gap="$2" marginTop="$1">
+        <Button
+          size="$4"
+          flex={1}
+          borderWidth={1}
+          borderColor="$borderColor"
+          disabled={ocupado}
+          onPress={onCerrar}
+        >
+          Cancelar
+        </Button>
+        <Button
+          size="$4"
+          flex={1}
+          backgroundColor="$gray12"
+          color="$gray1"
+          fontWeight="bold"
+          pressStyle={{ opacity: 0.85 }}
+          disabled={ocupado}
+          icon={
+            ocupado ? (
+              <Spinner size="small" color="$gray1" />
+            ) : (
+              <Ionicons name="checkmark-circle" size={18} color={tema.gray1?.val} />
+            )
+          }
+          onPress={() => void guardar()}
+        >
+          {ocupado ? 'Guardando…' : 'Guardar'}
+        </Button>
+      </XStack>
+    </YStack>
+  )
+}
+
+interface ModalEditarSerieProps {
+  objetivo: SerieEnEdicion | null
+  ocupado: boolean
+  error: string | null
+  onCerrar: () => void
+  onGuardar: (registroId: string, serieId: string, cambios: CambiosSerie) => Promise<boolean>
+}
+
+/** Modal de edición de serie registrada: peso, reps, RPE opcional y notas. */
+function ModalEditarSerie({
+  objetivo,
+  ocupado,
+  error,
+  onCerrar,
+  onGuardar,
+}: ModalEditarSerieProps) {
+  return (
+    <Modal
+      visible={objetivo !== null}
+      animationType="slide"
+      transparent
+      onRequestClose={ocupado ? undefined : onCerrar}
+      statusBarTranslucent
+    >
+      <YStack flex={1} justifyContent="flex-end">
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onPress={ocupado ? undefined : onCerrar}
+          accessibilityLabel="Cerrar edición de serie"
+        />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          {objetivo ? (
+            <FormularioEditarSerie
+              key={objetivo.serie.id}
+              objetivo={objetivo}
+              ocupado={ocupado}
+              error={error}
+              onCerrar={onCerrar}
+              onGuardar={onGuardar}
+            />
+          ) : null}
+        </KeyboardAvoidingView>
+      </YStack>
+    </Modal>
   )
 }
 
@@ -408,6 +707,8 @@ export default function SesionScreen() {
   const errorSesion = useSesionStore((s) => s.error)
   const iniciarSesion = useSesionStore((s) => s.iniciarSesion)
   const agregarSerie = useSesionStore((s) => s.agregarSerie)
+  const actualizarSerie = useSesionStore((s) => s.actualizarSerie)
+  const eliminarSerie = useSesionStore((s) => s.eliminarSerie)
   const finalizarSesion = useSesionStore((s) => s.finalizarSesion)
   const descartarSesion = useSesionStore((s) => s.descartarSesion)
   const limpiarError = useSesionStore((s) => s.limpiarError)
@@ -419,6 +720,13 @@ export default function SesionScreen() {
   const [diaElegidoId, setDiaElegidoId] = useState<string | null>(null)
   const [modalFinalizarAbierto, setModalFinalizarAbierto] = useState(false)
   const [sesionTerminada, setSesionTerminada] = useState<{ volumen: number } | null>(null)
+  const [serieOcupadaId, setSerieOcupadaId] = useState<string | null>(null)
+  const [serieEditando, setSerieEditando] = useState<SerieEnEdicion | null>(null)
+  const [accionFallidaSerie, setAccionFallidaSerie] = useState<
+    | { tipo: 'actualizar'; registroId: string; serieId: string; cambios: CambiosSerie }
+    | { tipo: 'eliminar'; registroId: string; serieId: string }
+    | null
+  >(null)
   const [detalleModal, setDetalleModal] = useState<{
     ejercicio: Ejercicio
     imagenUrl: string | null
@@ -542,14 +850,77 @@ export default function SesionScreen() {
     ])
   }
 
+  const guardarEdicionSerie = async (
+    registroId: string,
+    serieId: string,
+    cambios: CambiosSerie,
+  ): Promise<boolean> => {
+    setSerieOcupadaId(serieId)
+    setAccionFallidaSerie(null)
+    try {
+      await actualizarSerie(registroId, serieId, cambios)
+    } finally {
+      setSerieOcupadaId(null)
+    }
+    if (!useSesionStore.getState().error) {
+      setSerieEditando((actual) => (actual?.serie.id === serieId ? null : actual))
+      return true
+    }
+    setAccionFallidaSerie({ tipo: 'actualizar', registroId, serieId, cambios })
+    return false
+  }
+
+  const ejecutarEliminarSerie = async (registroId: string, serieId: string): Promise<void> => {
+    setSerieOcupadaId(serieId)
+    setAccionFallidaSerie(null)
+    try {
+      await eliminarSerie(registroId, serieId)
+    } finally {
+      setSerieOcupadaId(null)
+    }
+    if (useSesionStore.getState().error) {
+      setAccionFallidaSerie({ tipo: 'eliminar', registroId, serieId })
+    }
+  }
+
+  const confirmarEliminarSerie = (registroId: string, serie: SerieReal) => {
+    const mensaje = `¿Eliminar la serie S${serie.numero_serie} (${serie.peso_levantado} kg × ${serie.reps_realizadas})? Se borrará de la sesión en curso.`
+    if (Platform.OS === 'web') {
+      if (window.confirm(mensaje)) {
+        void ejecutarEliminarSerie(registroId, serie.id)
+      }
+      return
+    }
+    Alert.alert('Eliminar serie', mensaje, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => void ejecutarEliminarSerie(registroId, serie.id),
+      },
+    ])
+  }
+
   /**
-   * Reintento contextual: si falló el arranque de la sesión (día elegido y
-   * sin sesión en curso), se reintenta ESA operación; si no, se recargan las
-   * rutinas y se limpia el error (las series/finalizar se reintentan con sus
-   * propios botones).
+   * Reintento contextual: si falló una edición/eliminación de serie en la
+   * sesión activa se reintenta esa operación; si falló el arranque de la
+   * sesión (día elegido y sin sesión en curso), se reintenta iniciar; si no,
+   * se recargan las rutinas y se limpia el error.
    */
   const reintentar = () => {
     limpiarError()
+    if (sesionActual && accionFallidaSerie) {
+      if (accionFallidaSerie.tipo === 'actualizar') {
+        void guardarEdicionSerie(
+          accionFallidaSerie.registroId,
+          accionFallidaSerie.serieId,
+          accionFallidaSerie.cambios,
+        )
+      } else {
+        void ejecutarEliminarSerie(accionFallidaSerie.registroId, accionFallidaSerie.serieId)
+      }
+      return
+    }
     if (!sesionActual && diaElegido && rutinaActiva && usuarioId && errorSesion) {
       void iniciar()
       return
@@ -684,7 +1055,17 @@ export default function SesionScreen() {
                   registro={registro}
                   objetivo={objetivosPorEjercicio.get(registro.ejercicio_id)}
                   ocupado={cargando}
-                  onAgregar={(registroId, serie) => void agregarSerie(registroId, serie)}
+                  serieOcupadaId={serieOcupadaId}
+                  onAgregar={(registroId, serie) => {
+                    setAccionFallidaSerie(null)
+                    void agregarSerie(registroId, serie)
+                  }}
+                  onEditarSerie={(registroId, ejercicioNombre, serie) => {
+                    limpiarError()
+                    setAccionFallidaSerie(null)
+                    setSerieEditando({ registroId, ejercicioNombre, serie })
+                  }}
+                  onEliminarSerie={confirmarEliminarSerie}
                   onVerDetalle={() => {
                     const objetivo = objetivosPorEjercicio.get(registro.ejercicio_id)
                     const ej = ejerciciosPorId.get(registro.ejercicio_id) ?? {
@@ -708,6 +1089,14 @@ export default function SesionScreen() {
             )}
           </YStack>
         </ScrollView>
+
+        <ModalEditarSerie
+          objetivo={serieEditando}
+          ocupado={cargando}
+          error={errorSesion}
+          onCerrar={() => setSerieEditando(null)}
+          onGuardar={guardarEdicionSerie}
+        />
 
         <ModalFinalizar
           visible={modalFinalizarAbierto}

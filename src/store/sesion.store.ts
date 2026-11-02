@@ -19,12 +19,17 @@ import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import {
   crearSesion,
   agregarSerie,
+  actualizarSerie as actualizarSerieRepo,
+  eliminarSerie as eliminarSerieRepo,
   eliminarSesion,
   obtenerSesionDetalle,
   listarSesionesPorUsuario,
+  type CambiosSerie,
 } from '../db/repositories/sesion.repository'
 import { obtenerRutinaDetalle, type RutinaDetalle } from '../db/repositories/rutina.repository'
 import { generarId, ahoraISO } from '../utils/id'
+
+export type { CambiosSerie }
 
 interface RegistroEnCurso {
   registro_id: string
@@ -68,8 +73,12 @@ export interface SesionEstado extends EstadoCarga {
     usuarioId: string
   }) => Promise<void>
   agregarSerie: (registroId: string, serie: Omit<SerieReal, 'id' | 'registro_id'>) => Promise<void>
-  actualizarSerie: (registroId: string, numeroSerie: number, cambios: Partial<SerieReal>) => void
-  eliminarSerie: (registroId: string, numeroSerie: number) => void
+  actualizarSerie: (
+    registroId: string,
+    serieId: string,
+    cambios: CambiosSerie,
+  ) => Promise<void>
+  eliminarSerie: (registroId: string, serieId: string) => Promise<void>
   finalizarSesion: (params?: {
     duracion_minutos?: number
     notas?: string
@@ -109,6 +118,22 @@ function crearRegistrosDesdeRutina(
       series: [],
     }))
   )
+}
+
+function aplicarCambiosSerieLocal(actual: SerieReal, cambios: CambiosSerie): SerieReal {
+  return {
+    id: actual.id,
+    registro_id: actual.registro_id,
+    numero_serie: actual.numero_serie,
+    peso_levantado:
+      cambios.peso_levantado !== undefined ? cambios.peso_levantado : actual.peso_levantado,
+    reps_realizadas:
+      cambios.reps_realizadas !== undefined ? cambios.reps_realizadas : actual.reps_realizadas,
+    rpe_serie: cambios.rpe_serie !== undefined ? cambios.rpe_serie : actual.rpe_serie,
+    rir: cambios.rir !== undefined ? cambios.rir : actual.rir,
+    completada: cambios.completada !== undefined ? cambios.completada : actual.completada,
+    notas: cambios.notas !== undefined ? cambios.notas : actual.notas,
+  }
 }
 
 export const useSesionStore = create<SesionEstado>((set, get) => ({
@@ -187,50 +212,93 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     }
 
     await ejecutarAccion(set, async (db) => {
-      const serieCompleta: SerieReal = {
-        ...serie,
-        id: generarId(),
-        registro_id: registroId,
-      }
-      await agregarSerie(db, registroId, serieCompleta)
-      return serieCompleta
+      const creada = await agregarSerie(db, registroId, serie)
+      return (
+        creada ?? {
+          ...serie,
+          id: generarId(),
+          registro_id: registroId,
+        }
+      )
     }, (serieGuardada) => {
-      const registros = sesionActual.registros.map((r) =>
+      const actual = get().sesionActual ?? sesionActual
+      const registros = actual.registros.map((r) =>
         r.registro_id === registroId
           ? { ...r, series: [...r.series, serieGuardada].sort((a, b) => a.numero_serie - b.numero_serie) }
           : r
       )
-      return { sesionActual: { ...sesionActual, registros } }
+      return { sesionActual: { ...actual, registros } }
     })
   },
 
-  actualizarSerie: (registroId, numeroSerie, cambios) => {
+  actualizarSerie: async (registroId, serieId, cambios) => {
     const { sesionActual } = get()
-    if (!sesionActual) return
+    if (!sesionActual) {
+      set({ error: 'No hay sesión activa' })
+      return
+    }
 
-    const registros = sesionActual.registros.map((r) =>
-      r.registro_id === registroId
-        ? {
-            ...r,
-            series: r.series.map((s) =>
-              s.numero_serie === numeroSerie ? { ...s, ...cambios } : s
-            ),
-          }
-        : r
+    await ejecutarAccion(
+      set,
+      async (db) => actualizarSerieRepo(db, serieId, cambios),
+      (seriePersistida) => {
+        const actual = get().sesionActual
+        if (!actual) {
+          return {}
+        }
+        const registros = actual.registros.map((r) =>
+          r.registro_id === registroId
+            ? {
+                ...r,
+                series: r.series
+                  .map((s) =>
+                    s.id === serieId
+                      ? seriePersistida ?? aplicarCambiosSerieLocal(s, cambios)
+                      : s,
+                  )
+                  .sort((a, b) => a.numero_serie - b.numero_serie),
+              }
+            : r,
+        )
+        return { sesionActual: { ...actual, registros } }
+      },
     )
-    set({ sesionActual: { ...sesionActual, registros } })
   },
 
-  eliminarSerie: (registroId, numeroSerie) => {
+  eliminarSerie: async (registroId, serieId) => {
     const { sesionActual } = get()
-    if (!sesionActual) return
+    if (!sesionActual) {
+      set({ error: 'No hay sesión activa' })
+      return
+    }
 
-    const registros = sesionActual.registros.map((r) =>
-      r.registro_id === registroId
-        ? { ...r, series: r.series.filter((s) => s.numero_serie !== numeroSerie) }
-        : r
+    await ejecutarAccion(
+      set,
+      async (db) => {
+        await eliminarSerieRepo(db, serieId)
+        return serieId
+      },
+      () => {
+        const actual = get().sesionActual
+        if (!actual) {
+          return {}
+        }
+        const registros = actual.registros.map((r) => {
+          if (r.registro_id !== registroId) {
+            return r
+          }
+          const restantes = r.series
+            .filter((s) => s.id !== serieId)
+            .sort((a, b) => a.numero_serie - b.numero_serie)
+            .map((s, indice) => ({
+              ...s,
+              numero_serie: indice + 1,
+            }))
+          return { ...r, series: restantes }
+        })
+        return { sesionActual: { ...actual, registros } }
+      },
     )
-    set({ sesionActual: { ...sesionActual, registros } })
   },
 
   finalizarSesion: async (params) => {
