@@ -244,7 +244,9 @@ function ControlImagenEjercicio({
   const [uriErrorCarga, setUriErrorCarga] = useState<string | null>(null)
 
   const uriLimpia = valor.trim()
-  const esArchivoLocal = /^(file:\/\/|content:\/\/|blob:|data:image\/)/i.test(uriLimpia)
+  const esArchivoLocal = /^(file:\/\/|content:\/\/|ph:\/\/|assets-library:\/\/|blob:|data:image\/)/i.test(
+    uriLimpia,
+  )
   const falloPreview = uriLimpia !== '' && uriErrorCarga === uriLimpia
 
   const procesarSeleccion = async (origen: 'galeria' | 'camara') => {

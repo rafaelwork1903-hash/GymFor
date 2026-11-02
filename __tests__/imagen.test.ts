@@ -1,5 +1,5 @@
+import { SaveFormat } from 'expo-image-manipulator'
 import { Platform } from 'react-native'
-import * as ImageManipulator from 'expo-image-manipulator'
 import {
   ANCHO_MAXIMO_IMAGEN,
   CALIDAD_COMPRESION_WEBP,
@@ -7,7 +7,12 @@ import {
   esUriImagenValida,
 } from '../src/utils/imagen'
 
-const mockManipulateAsync = jest.fn()
+const mockSaveAsync = jest.fn()
+const mockReleaseImageRef = jest.fn()
+const mockRenderAsync = jest.fn()
+const mockResize = jest.fn()
+const mockReleaseContext = jest.fn()
+const mockManipulate = jest.fn()
 const mockCreateDirectory = jest.fn()
 const mockCopyFile = jest.fn()
 
@@ -15,7 +20,9 @@ let mockExisteDirectorio = false
 let mockUriDocumentos = 'file:///datos/app/Documents/'
 
 jest.mock('expo-image-manipulator', () => ({
-  manipulateAsync: (...args: unknown[]) => mockManipulateAsync(...args),
+  ImageManipulator: {
+    manipulate: (...args: unknown[]) => mockManipulate(...args),
+  },
   SaveFormat: {
     JPEG: 'jpeg',
     PNG: 'png',
@@ -67,7 +74,7 @@ jest.mock('expo-file-system', () => {
   }
 })
 
-describe('utilidad comprimirImagen (WEBP)', () => {
+describe('utilidad comprimirImagen (API contextual WEBP)', () => {
   const plataformaOriginal = Platform.OS
 
   beforeEach(() => {
@@ -75,14 +82,31 @@ describe('utilidad comprimirImagen (WEBP)', () => {
     mockExisteDirectorio = false
     mockUriDocumentos = 'file:///datos/app/Documents/'
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true })
+
+    const mockContexto = {
+      resize: (...args: unknown[]) => {
+        mockResize(...args)
+        return mockContexto
+      },
+      renderAsync: (...args: unknown[]) => mockRenderAsync(...args),
+      release: () => mockReleaseContext(),
+    }
+
+    mockManipulate.mockReturnValue(mockContexto)
+    mockRenderAsync.mockResolvedValue({
+      width: 800,
+      height: 600,
+      saveAsync: (...args: unknown[]) => mockSaveAsync(...args),
+      release: () => mockReleaseImageRef(),
+    })
   })
 
   afterAll(() => {
     Object.defineProperty(Platform, 'OS', { value: plataformaOriginal, configurable: true })
   })
 
-  it('redimensiona a 800 px y comprime en formato WEBP (calidad 0.8) por defecto, copiando a almacenamiento persistente', async () => {
-    mockManipulateAsync.mockResolvedValue({
+  it('usa ImageManipulator.manipulate -> resize -> renderAsync -> saveAsync en WEBP (800 px, 0.8), libera recursos y persiste en nativo', async () => {
+    mockSaveAsync.mockResolvedValue({
       uri: 'file:///datos/app/Caches/ImageManipulator/temp.webp',
       width: 800,
       height: 600,
@@ -90,23 +114,28 @@ describe('utilidad comprimirImagen (WEBP)', () => {
 
     const resultado = await comprimirImagen('file:///galeria/original.jpg')
 
-    expect(mockManipulateAsync).toHaveBeenCalledTimes(1)
-    expect(mockManipulateAsync).toHaveBeenCalledWith(
-      'file:///galeria/original.jpg',
-      [{ resize: { width: ANCHO_MAXIMO_IMAGEN } }],
-      {
-        compress: CALIDAD_COMPRESION_WEBP,
-        format: ImageManipulator.SaveFormat.WEBP,
-      },
-    )
+    expect(mockManipulate).toHaveBeenCalledTimes(1)
+    expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/original.jpg', {
+      maxWidth: ANCHO_MAXIMO_IMAGEN,
+    })
+    expect(mockResize).toHaveBeenCalledWith({ width: ANCHO_MAXIMO_IMAGEN })
+    expect(mockRenderAsync).toHaveBeenCalledTimes(1)
+    expect(mockSaveAsync).toHaveBeenCalledWith({
+      compress: CALIDAD_COMPRESION_WEBP,
+      format: SaveFormat.WEBP,
+    })
+    expect(mockReleaseImageRef).toHaveBeenCalledTimes(1)
+    expect(mockReleaseContext).toHaveBeenCalledTimes(1)
     expect(mockCreateDirectory).toHaveBeenCalledWith({ intermediates: true, idempotent: true })
     expect(mockCopyFile).toHaveBeenCalledTimes(1)
-    expect(resultado).toMatch(/^file:\/\/\/datos\/app\/Documents\/ejercicios_rutina\/ejercicio_.+\.webp$/)
+    expect(resultado).toMatch(
+      /^file:\/\/\/datos\/app\/Documents\/ejercicios_rutina\/ejercicio_.+\.webp$/,
+    )
   })
 
   it('respeta parámetros personalizados de ancho máximo y calidad', async () => {
     mockExisteDirectorio = true
-    mockManipulateAsync.mockResolvedValue({
+    mockSaveAsync.mockResolvedValue({
       uri: 'file:///datos/app/Caches/temp2.webp',
       width: 600,
       height: 450,
@@ -117,21 +146,19 @@ describe('utilidad comprimirImagen (WEBP)', () => {
       calidad: 0.7,
     })
 
-    expect(mockManipulateAsync).toHaveBeenCalledWith(
-      'file:///galeria/foto.png',
-      [{ resize: { width: 600 } }],
-      {
-        compress: 0.7,
-        format: ImageManipulator.SaveFormat.WEBP,
-      },
-    )
+    expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/foto.png', { maxWidth: 600 })
+    expect(mockResize).toHaveBeenCalledWith({ width: 600 })
+    expect(mockSaveAsync).toHaveBeenCalledWith({
+      compress: 0.7,
+      format: SaveFormat.WEBP,
+    })
     // El directorio ya existía: no vuelve a crearlo
     expect(mockCreateDirectory).not.toHaveBeenCalled()
     expect(resultado).toMatch(/\.webp$/)
   })
 
   it('no reescala hacia arriba si anchoOriginal es menor o igual al ancho máximo', async () => {
-    mockManipulateAsync.mockResolvedValue({
+    mockSaveAsync.mockResolvedValue({
       uri: 'file:///datos/app/Caches/pequena.webp',
       width: 480,
       height: 360,
@@ -142,19 +169,19 @@ describe('utilidad comprimirImagen (WEBP)', () => {
       anchoOriginal: 480,
     })
 
-    expect(mockManipulateAsync).toHaveBeenCalledWith(
-      'file:///galeria/pequena.jpg',
-      [],
-      {
-        compress: CALIDAD_COMPRESION_WEBP,
-        format: ImageManipulator.SaveFormat.WEBP,
-      },
-    )
+    expect(mockManipulate).toHaveBeenCalledWith('file:///galeria/pequena.jpg', { maxWidth: 800 })
+    expect(mockResize).not.toHaveBeenCalled()
+    expect(mockSaveAsync).toHaveBeenCalledWith({
+      compress: CALIDAD_COMPRESION_WEBP,
+      format: SaveFormat.WEBP,
+    })
+    expect(mockReleaseImageRef).toHaveBeenCalledTimes(1)
+    expect(mockReleaseContext).toHaveBeenCalledTimes(1)
   })
 
   it('en web solicita base64 y devuelve un data URI WEBP persistente sin usar expo-file-system', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true })
-    mockManipulateAsync.mockResolvedValue({
+    mockSaveAsync.mockResolvedValue({
       uri: 'blob:http://localhost:8081/abc',
       width: 800,
       height: 600,
@@ -163,39 +190,51 @@ describe('utilidad comprimirImagen (WEBP)', () => {
 
     const resultado = await comprimirImagen('blob:http://localhost:8081/origen')
 
-    expect(mockManipulateAsync).toHaveBeenCalledWith(
-      'blob:http://localhost:8081/origen',
-      [{ resize: { width: 800 } }],
-      {
-        compress: 0.8,
-        format: ImageManipulator.SaveFormat.WEBP,
-        base64: true,
-      },
-    )
+    expect(mockManipulate).toHaveBeenCalledWith('blob:http://localhost:8081/origen', {
+      maxWidth: 800,
+    })
+    expect(mockResize).toHaveBeenCalledWith({ width: 800 })
+    expect(mockSaveAsync).toHaveBeenCalledWith({
+      compress: 0.8,
+      format: SaveFormat.WEBP,
+      base64: true,
+    })
     expect(mockCopyFile).not.toHaveBeenCalled()
     expect(resultado).toBe(
       'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
     )
   })
 
-  it('rechaza URIs vacías o parámetros fuera de rango y propaga errores del manipulador', async () => {
+  it('rechaza URIs vacías o parámetros fuera de rango y libera recursos aun si el manipulador falla', async () => {
     await expect(comprimirImagen('   ')).rejects.toThrow(/URI/i)
     await expect(comprimirImagen('file:///a.jpg', { anchoMaximo: 0 })).rejects.toThrow(/ancho/i)
     await expect(comprimirImagen('file:///a.jpg', { calidad: 0 })).rejects.toThrow(/calidad/i)
     await expect(comprimirImagen('file:///a.jpg', { calidad: 1.5 })).rejects.toThrow(/calidad/i)
 
-    mockManipulateAsync.mockRejectedValueOnce(new Error('Fallo nativo al decodificar'))
+    mockRenderAsync.mockRejectedValueOnce(new Error('Fallo nativo al decodificar'))
     await expect(comprimirImagen('file:///corrupta.jpg')).rejects.toThrow(
       'Fallo nativo al decodificar',
     )
+    expect(mockReleaseContext).toHaveBeenCalledTimes(1)
+
+    mockSaveAsync.mockRejectedValueOnce(new Error('Fallo al codificar WEBP'))
+    await expect(comprimirImagen('file:///error-guardado.jpg')).rejects.toThrow(
+      'Fallo al codificar WEBP',
+    )
+    expect(mockReleaseImageRef).toHaveBeenCalledTimes(1)
+    expect(mockReleaseContext).toHaveBeenCalledTimes(2)
   })
 })
 
 describe('esUriImagenValida', () => {
-  it('acepta URLs remotas http/https y URIs locales válidas', () => {
+  it('acepta URLs remotas http/https y todos los esquemas de URIs locales soportados', () => {
     expect(esUriImagenValida('https://ejemplo.com/foto.webp')).toBe(true)
     expect(esUriImagenValida('http://cdn.ejemplo.com/img.png?w=800')).toBe(true)
     expect(esUriImagenValida('file:///datos/app/Documents/ej.webp')).toBe(true)
+    expect(esUriImagenValida('content://media/external/images/media/42')).toBe(true)
+    expect(esUriImagenValida('ph://ED7AC36B-A150-4C38-BB8C-B6D696F4F2ED/L0/001')).toBe(true)
+    expect(esUriImagenValida('assets-library://asset/asset.JPG?id=1000000477&ext=JPG')).toBe(true)
+    expect(esUriImagenValida('blob:http://localhost:8081/1234-5678')).toBe(true)
     expect(esUriImagenValida('data:image/webp;base64,AAAA')).toBe(true)
   })
 
@@ -205,5 +244,6 @@ describe('esUriImagenValida', () => {
     expect(esUriImagenValida('texto-suelto')).toBe(false)
     expect(esUriImagenValida('https://con espacios.com/a.jpg')).toBe(false)
     expect(esUriImagenValida('ftp://servidor.com/a.jpg')).toBe(false)
+    expect(esUriImagenValida('data:image/webp,sin-base64')).toBe(false)
   })
 })

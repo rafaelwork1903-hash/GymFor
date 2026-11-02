@@ -4,7 +4,13 @@
  */
 
 import { Directory, File, Paths } from 'expo-file-system'
-import * as ImageManipulator from 'expo-image-manipulator'
+import {
+  ImageManipulator,
+  SaveFormat,
+  type ImageManipulatorContext,
+  type ImageRef,
+  type SaveOptions,
+} from 'expo-image-manipulator'
 import { Platform } from 'react-native'
 
 import { generarId } from './id'
@@ -29,14 +35,15 @@ export interface OpcionesCompresionImagen {
 
 /**
  * Valida si una cadena corresponde a una URL remota (`http`/`https`) o un URI
- * de imagen local soportado (`file://`, `content://`, `blob:`, `data:image/`).
+ * de imagen local soportado (`file://`, `content://`, `ph://`, `assets-library://`,
+ * `blob:`, `data:image/...;base64`).
  */
 export function esUriImagenValida(uri: string): boolean {
   const limpia = uri.trim()
   if (limpia === '' || /\s/.test(limpia)) {
     return false
   }
-  return /^(https?:\/\/.+|file:\/\/.+|content:\/\/.+|blob:.+|data:image\/[a-zA-Z0-9.+-]+;base64,.+)$/i.test(
+  return /^(https?:\/\/.+|file:\/\/.+|content:\/\/.+|ph:\/\/.+|assets-library:\/\/.+|blob:.+|data:image\/[a-zA-Z0-9.+-]+;base64,.+)$/i.test(
     limpia,
   )
 }
@@ -71,8 +78,9 @@ async function persistirArchivoLocal(uriTemporal: string): Promise<string> {
 }
 
 /**
- * Redimensiona y comprime una imagen al formato WEBP usando `ImageManipulator.manipulateAsync`
- * y devuelve el URI persistente resultante.
+ * Redimensiona y comprime una imagen al formato WEBP usando la API contextual
+ * orientada a objetos de `expo-image-manipulator` (`ImageManipulator.manipulate`
+ * → `renderAsync` → `saveAsync`) liberando los recursos nativos al finalizar.
  *
  * @param uri URI de entrada de la imagen seleccionada o capturada.
  * @param opciones Parámetros opcionales de ancho máximo y calidad de compresión.
@@ -97,28 +105,42 @@ export async function comprimirImagen(
     throw new Error('La calidad de compresión debe estar entre 0 (excluido) y 1.')
   }
 
+  const anchoObjetivo = Math.round(anchoMaximo)
   const requiereRedimension =
     opciones.anchoOriginal === undefined ||
     opciones.anchoOriginal <= 0 ||
-    opciones.anchoOriginal > anchoMaximo
+    opciones.anchoOriginal > anchoObjetivo
 
-  const acciones: ImageManipulator.Action[] = requiereRedimension
-    ? [{ resize: { width: Math.round(anchoMaximo) } }]
-    : []
-
-  const opcionesGuardado: ImageManipulator.SaveOptions = {
+  const opcionesGuardado: SaveOptions = {
     compress: calidad,
-    format: ImageManipulator.SaveFormat.WEBP,
+    format: SaveFormat.WEBP,
     ...(Platform.OS === 'web' ? { base64: true } : {}),
   }
 
-  const resultado = await ImageManipulator.manipulateAsync(
-    uriLimpia,
-    acciones,
-    opcionesGuardado,
-  )
+  let contexto: ImageManipulatorContext | null = null
+  let imagenRenderizada: ImageRef | null = null
+  let resultado: Awaited<ReturnType<ImageRef['saveAsync']>>
+
+  try {
+    contexto = ImageManipulator.manipulate(uriLimpia, { maxWidth: anchoObjetivo })
+    if (requiereRedimension) {
+      contexto.resize({ width: anchoObjetivo })
+    }
+    imagenRenderizada = await contexto.renderAsync()
+    resultado = await imagenRenderizada.saveAsync(opcionesGuardado)
+  } finally {
+    imagenRenderizada?.release()
+    contexto?.release()
+  }
 
   if (Platform.OS === 'web' && resultado.base64) {
+    if (
+      typeof URL !== 'undefined' &&
+      typeof URL.revokeObjectURL === 'function' &&
+      resultado.uri.startsWith('blob:')
+    ) {
+      URL.revokeObjectURL(resultado.uri)
+    }
     return `data:image/webp;base64,${resultado.base64}`
   }
 
