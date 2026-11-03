@@ -95,6 +95,13 @@ export default function RootLayout() {
           <BootstrapUsuario />
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/* Onboarding de primer uso: bienvenida y configuración de perfil. */}
+            <Stack.Screen
+              name="onboarding"
+              options={{ headerShown: false, gestureEnabled: false }}
+            />
+            {/* Edición posterior del perfil del usuario desde el Dashboard. */}
+            <Stack.Screen name="perfil" options={{ headerShown: false }} />
             {/* Creación completa de rutinas: pantalla dedicada con cabecera
                 propia (días y ejercicios desde el catálogo). */}
             <Stack.Screen name="nueva-rutina" options={{ headerShown: false }} />

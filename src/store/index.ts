@@ -2,7 +2,16 @@
  * Barrel de exports de la capa de estado (Zustand).
  */
 
-export { useConfiguracionStore } from './configuracion.store'
+export {
+  useConfiguracionStore,
+  esPerfilCompletado,
+  seleccionarPerfilCompletado,
+  NOMBRE_USUARIO_INICIAL,
+  CLAVE_ONBOARDING_COMPLETADO,
+  type DatosPerfil,
+  type DatosUsuarioInicial,
+  type Tema,
+} from './configuracion.store'
 export { useEjerciciosStore } from './ejercicios.store'
 export { useMediaStore } from './media.store'
 export { useRutinasStore } from './rutinas.store'

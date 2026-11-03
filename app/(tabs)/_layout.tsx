@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons'
-import { Tabs } from 'expo-router'
+import { Redirect, Tabs } from 'expo-router'
 import type { ComponentProps } from 'react'
 import type { ColorValue } from 'react-native'
-import { useTheme } from 'tamagui'
+import { Button, Card, Spinner, Text, useTheme, YStack } from 'tamagui'
+
+import { esPerfilCompletado, useConfiguracionStore } from '../../src/store/configuracion.store'
 
 type NombreIcono = ComponentProps<typeof Ionicons>['name']
 
@@ -20,10 +22,67 @@ function crearIcono(activo: NombreIcono, inactivo: NombreIcono) {
 
 /**
  * Navegación principal de GymFor: 5 tabs.
+ *
+ * Actúa también como puerta de primer uso: si el usuario activo aún no ha
+ * completado su perfil (`!esPerfilCompletado(usuarioActivo)`), redirige de
+ * forma declarativa a `/onboarding` sin permitir acceder a las pestañas.
  * Colores tomados de los tokens del tema activo de Tamagui (claro/oscuro).
  */
 export default function TabsLayout() {
   const tema = useTheme()
+  const usuarioActivo = useConfiguracionStore((s) => s.usuarioActivo)
+  const cargandoUsuario = useConfiguracionStore((s) => s.cargando)
+  const errorUsuario = useConfiguracionStore((s) => s.error)
+  const asegurarUsuario = useConfiguracionStore((s) => s.asegurarUsuario)
+
+  if (!usuarioActivo) {
+    if (errorUsuario && !cargandoUsuario) {
+      return (
+        <YStack
+          flex={1}
+          backgroundColor="$background"
+          justifyContent="center"
+          alignItems="center"
+          padding="$4"
+        >
+          <Card size="$4" borderWidth={1} borderColor="$red8" backgroundColor="$red5" padding="$4" gap="$3">
+            <Text fontWeight="bold" color="$red11" fontSize="$4">
+              No se pudo preparar tu perfil
+            </Text>
+            <Text fontSize="$2" color="$red10">
+              {errorUsuario}
+            </Text>
+            <Button
+              size="$3"
+              borderColor="$red8"
+              onPress={() => void asegurarUsuario()}
+              accessibilityLabel="Reintentar preparación de perfil"
+              aria-label="Reintentar preparación de perfil"
+            >
+              Reintentar
+            </Button>
+          </Card>
+        </YStack>
+      )
+    }
+
+    return (
+      <YStack
+        flex={1}
+        backgroundColor="$background"
+        justifyContent="center"
+        alignItems="center"
+        gap="$4"
+      >
+        <Spinner size="large" color="$color" />
+        <Text color="$gray10">Preparando tu perfil…</Text>
+      </YStack>
+    )
+  }
+
+  if (!esPerfilCompletado(usuarioActivo)) {
+    return <Redirect href="/onboarding" />
+  }
 
   return (
     <Tabs
