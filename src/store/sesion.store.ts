@@ -16,15 +16,11 @@ import type {
   SerieReal,
 } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import {
-  crearSesion,
-  agregarSerie,
-  eliminarSesion,
-  obtenerSesionDetalle,
-  listarSesionesPorUsuario,
-} from '../db/repositories/sesion.repository'
-import { obtenerRutinaDetalle, type RutinaDetalle } from '../db/repositories/rutina.repository'
+import type { CambiosSerie } from '../db/repositories/sesion.repository'
+import type { RutinaDetalle } from '../db/repositories/rutina.repository'
 import { generarId, ahoraISO } from '../utils/id'
+
+export type { CambiosSerie }
 
 interface RegistroEnCurso {
   registro_id: string
@@ -68,8 +64,12 @@ export interface SesionEstado extends EstadoCarga {
     usuarioId: string
   }) => Promise<void>
   agregarSerie: (registroId: string, serie: Omit<SerieReal, 'id' | 'registro_id'>) => Promise<void>
-  actualizarSerie: (registroId: string, numeroSerie: number, cambios: Partial<SerieReal>) => void
-  eliminarSerie: (registroId: string, numeroSerie: number) => void
+  actualizarSerie: (
+    registroId: string,
+    serieId: string,
+    cambios: CambiosSerie,
+  ) => Promise<void>
+  eliminarSerie: (registroId: string, serieId: string) => Promise<void>
   finalizarSesion: (params?: {
     duracion_minutos?: number
     notas?: string
@@ -111,6 +111,22 @@ function crearRegistrosDesdeRutina(
   )
 }
 
+function aplicarCambiosSerieLocal(actual: SerieReal, cambios: CambiosSerie): SerieReal {
+  return {
+    id: actual.id,
+    registro_id: actual.registro_id,
+    numero_serie: actual.numero_serie,
+    peso_levantado:
+      cambios.peso_levantado !== undefined ? cambios.peso_levantado : actual.peso_levantado,
+    reps_realizadas:
+      cambios.reps_realizadas !== undefined ? cambios.reps_realizadas : actual.reps_realizadas,
+    rpe_serie: cambios.rpe_serie !== undefined ? cambios.rpe_serie : actual.rpe_serie,
+    rir: cambios.rir !== undefined ? cambios.rir : actual.rir,
+    completada: cambios.completada !== undefined ? cambios.completada : actual.completada,
+    notas: cambios.notas !== undefined ? cambios.notas : actual.notas,
+  }
+}
+
 export const useSesionStore = create<SesionEstado>((set, get) => ({
   sesionActual: null,
   sesiones: [],
@@ -121,8 +137,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   error: null,
 
   iniciarSesion: async ({ rutinaId, diaRutinaId, usuarioId }) => {
-    await ejecutarAccion(set, async (db) => {
-      const rutinaDetalle: RutinaDetalle | null = await obtenerRutinaDetalle(db, rutinaId)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const rutinaDetalle: RutinaDetalle | null = await repos.rutinas.obtenerRutinaDetalle(rutinaId)
       if (!rutinaDetalle) {
         throw new Error(`Rutina no encontrada: ${rutinaId}`)
       }
@@ -163,7 +179,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         })),
       }
 
-      await crearSesion(db, nuevaSesion)
+      await repos.sesiones.crearSesion(nuevaSesion)
 
       return {
         sesion: {
@@ -186,51 +202,94 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       return
     }
 
-    await ejecutarAccion(set, async (db) => {
-      const serieCompleta: SerieReal = {
-        ...serie,
-        id: generarId(),
-        registro_id: registroId,
-      }
-      await agregarSerie(db, registroId, serieCompleta)
-      return serieCompleta
+    await ejecutarAccion(set, async (_db, repos) => {
+      const creada = await repos.sesiones.agregarSerie(registroId, serie)
+      return (
+        creada ?? {
+          ...serie,
+          id: generarId(),
+          registro_id: registroId,
+        }
+      )
     }, (serieGuardada) => {
-      const registros = sesionActual.registros.map((r) =>
+      const actual = get().sesionActual ?? sesionActual
+      const registros = actual.registros.map((r) =>
         r.registro_id === registroId
           ? { ...r, series: [...r.series, serieGuardada].sort((a, b) => a.numero_serie - b.numero_serie) }
           : r
       )
-      return { sesionActual: { ...sesionActual, registros } }
+      return { sesionActual: { ...actual, registros } }
     })
   },
 
-  actualizarSerie: (registroId, numeroSerie, cambios) => {
+  actualizarSerie: async (registroId, serieId, cambios) => {
     const { sesionActual } = get()
-    if (!sesionActual) return
+    if (!sesionActual) {
+      set({ error: 'No hay sesión activa' })
+      return
+    }
 
-    const registros = sesionActual.registros.map((r) =>
-      r.registro_id === registroId
-        ? {
-            ...r,
-            series: r.series.map((s) =>
-              s.numero_serie === numeroSerie ? { ...s, ...cambios } : s
-            ),
-          }
-        : r
+    await ejecutarAccion(
+      set,
+      async (_db, repos) => repos.sesiones.actualizarSerie(serieId, cambios),
+      (seriePersistida) => {
+        const actual = get().sesionActual
+        if (!actual) {
+          return {}
+        }
+        const registros = actual.registros.map((r) =>
+          r.registro_id === registroId
+            ? {
+                ...r,
+                series: r.series
+                  .map((s) =>
+                    s.id === serieId
+                      ? seriePersistida ?? aplicarCambiosSerieLocal(s, cambios)
+                      : s,
+                  )
+                  .sort((a, b) => a.numero_serie - b.numero_serie),
+              }
+            : r,
+        )
+        return { sesionActual: { ...actual, registros } }
+      },
     )
-    set({ sesionActual: { ...sesionActual, registros } })
   },
 
-  eliminarSerie: (registroId, numeroSerie) => {
+  eliminarSerie: async (registroId, serieId) => {
     const { sesionActual } = get()
-    if (!sesionActual) return
+    if (!sesionActual) {
+      set({ error: 'No hay sesión activa' })
+      return
+    }
 
-    const registros = sesionActual.registros.map((r) =>
-      r.registro_id === registroId
-        ? { ...r, series: r.series.filter((s) => s.numero_serie !== numeroSerie) }
-        : r
+    await ejecutarAccion(
+      set,
+      async (_db, repos) => {
+        await repos.sesiones.eliminarSerie(serieId)
+        return serieId
+      },
+      () => {
+        const actual = get().sesionActual
+        if (!actual) {
+          return {}
+        }
+        const registros = actual.registros.map((r) => {
+          if (r.registro_id !== registroId) {
+            return r
+          }
+          const restantes = r.series
+            .filter((s) => s.id !== serieId)
+            .sort((a, b) => a.numero_serie - b.numero_serie)
+            .map((s, indice) => ({
+              ...s,
+              numero_serie: indice + 1,
+            }))
+          return { ...r, series: restantes }
+        })
+        return { sesionActual: { ...actual, registros } }
+      },
     )
-    set({ sesionActual: { ...sesionActual, registros } })
   },
 
   finalizarSesion: async (params) => {
@@ -240,28 +299,20 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       return
     }
 
-    await ejecutarAccion(set, async (db) => {
-      // Actualizar la sesión en BD con los datos finales
-      await db.runAsync(
-        `UPDATE sesiones
-         SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, actualizado_en = ?, sincronizado = 0
-         WHERE id = ?`,
-        [
-          params?.duracion_minutos ?? null,
-          params?.notas ?? null,
-          params?.rpe_sesion ?? null,
-          ahoraISO(),
-          sesionActual.sesion.id,
-        ],
-      )
-      return sesionActual.sesion.id
-    }, () => {
+    await ejecutarAccion(set, async (_db, repos) => {
+      const resultado = await repos.sesiones.finalizarSesion(sesionActual.sesion.id, {
+        duracion_minutos: params?.duracion_minutos ?? null,
+        notas: params?.notas ?? null,
+        rpe_sesion: params?.rpe_sesion ?? null,
+      })
+      return resultado?.actualizado_en ?? ahoraISO()
+    }, (actualizadoEn) => {
       const sesionFinalizada: SesionResumen = {
         ...sesionActual.sesion,
         duracion_minutos: params?.duracion_minutos ?? null,
         notas: params?.notas ?? null,
         rpe_sesion: params?.rpe_sesion ?? null,
-        actualizado_en: ahoraISO(),
+        actualizado_en: actualizadoEn,
         sincronizado: 0,
         rutina_nombre: sesionActual.rutina_nombre,
         nombre_dia: sesionActual.nombre_dia,
@@ -293,18 +344,18 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       set({ error: 'No hay sesión activa para descartar' })
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      await eliminarSesion(db, sesionActual.sesion.id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.sesiones.eliminarSesion(sesionActual.sesion.id)
       return sesionActual.sesion.id
     }, () => ({ sesionActual: null }))
   },
 
   cargarHistorial: async (usuarioId, rango) => {
-    await ejecutarAccion(set, async (db) => {
-      const sesiones = await listarSesionesPorUsuario(db, usuarioId, rango)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const sesiones = await repos.sesiones.listarSesionesPorUsuario(usuarioId, rango)
       const sesionesDetalle: SesionDetalle[] = []
       for (const sesion of sesiones.slice(0, LIMITE_SESIONES_DETALLE)) {
-        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        const detalle = await repos.sesiones.obtenerSesionDetalle(sesion.id)
         if (detalle) {
           sesionesDetalle.push(detalle)
         }
@@ -314,8 +365,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   },
 
   cargarDetallesCompletos: async (usuarioId, limite = LIMITE_DETALLES_COMPLETOS) => {
-    await ejecutarAccion(set, async (db) => {
-      const sesiones = await listarSesionesPorUsuario(db, usuarioId)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const sesiones = await repos.sesiones.listarSesionesPorUsuario(usuarioId)
       const recientes = sesiones.slice(0, limite)
       const { sesionesDetalle, detallesPorId } = get()
       const detalles: SesionDetalle[] = []
@@ -327,7 +378,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           detalles.push(enCache)
           continue
         }
-        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        const detalle = await repos.sesiones.obtenerSesionDetalle(sesion.id)
         if (detalle) {
           detalles.push(detalle)
         }
@@ -351,8 +402,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     if (yaCargado) {
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      const detalle = await obtenerSesionDetalle(db, id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const detalle = await repos.sesiones.obtenerSesionDetalle(id)
       if (!detalle) {
         throw new Error(`Sesión no encontrada: ${id}`)
       }

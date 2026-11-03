@@ -1,13 +1,12 @@
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
-import { SQLiteProvider } from 'expo-sqlite'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { useColorScheme } from 'react-native'
 import { TamaguiProvider } from 'tamagui'
 
 import { ErrorBoundary } from '../src/components/ui/ErrorBoundary'
-import { inicializarBD, NOMBRE_BD } from '../src/db/client'
+import { ProveedorBaseDatos } from '../src/db/provider'
 import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
 
@@ -87,10 +86,11 @@ export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={temaResuelto}>
       <StatusBar style={temaResuelto === 'dark' ? 'light' : 'dark'} />
-      {/* SQLiteProvider lanza durante el render si `onInit` rechaza; el
-          boundary lo convierte en una pantalla de error con reintento. */}
+      {/* ProveedorBaseDatos lanza durante el render si la inicialización del
+          motor activo rechaza; el boundary lo convierte en pantalla de error
+          con reintento. */}
       <ErrorBoundary titulo="No se pudo iniciar la base de datos">
-        <SQLiteProvider databaseName={NOMBRE_BD} onInit={inicializarBD}>
+        <ProveedorBaseDatos>
           {/* Bootstrap de usuario tras el init de la BD (ver docstring). */}
           <BootstrapUsuario />
           <Stack>
@@ -103,7 +103,7 @@ export default function RootLayout() {
             {/* Catálogo maestro de ejercicios con media y técnica */}
             <Stack.Screen name="ejercicios" options={{ headerShown: false }} />
           </Stack>
-        </SQLiteProvider>
+        </ProveedorBaseDatos>
       </ErrorBoundary>
     </TamaguiProvider>
   )

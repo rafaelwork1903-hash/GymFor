@@ -9,16 +9,6 @@ import { create } from 'zustand'
 
 import type { Rutina, RutinaDetalle, NuevaRutina, RutinaEditada } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import {
-  listarRutinas,
-  obtenerRutinaDetalle,
-  crearRutina,
-  actualizarRutina,
-  guardarRutina,
-  activarRutina,
-  desactivarRutina,
-  eliminarRutina,
-} from '../db/repositories/rutina.repository'
 
 export interface RutinasEstado extends EstadoCarga {
   rutinas: Rutina[]
@@ -42,8 +32,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
   error: null,
 
   cargarRutinas: async (usuarioId) => {
-    await ejecutarAccion(set, async (db) => {
-      const rutinas = await listarRutinas(db, usuarioId ?? undefined)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const rutinas = await repos.rutinas.listarRutinas(usuarioId ?? undefined)
       return rutinas
     }, (rutinas) => ({ rutinas }))
   },
@@ -53,8 +43,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
       set({ rutinaSeleccionada: null })
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      const detalle = await obtenerRutinaDetalle(db, id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const detalle = await repos.rutinas.obtenerRutinaDetalle(id)
       if (!detalle) {
         throw new Error(`Rutina no encontrada: ${id}`)
       }
@@ -63,15 +53,15 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
   },
 
   crearRutinaNueva: async (rutina) => {
-    return ejecutarAccion(set, async (db) => {
-      const creada = await crearRutina(db, rutina)
+    return ejecutarAccion(set, async (_db, repos) => {
+      const creada = await repos.rutinas.crearRutina(rutina)
       return creada
     }, (creada) => ({ rutinas: [...get().rutinas, creada] }))
   },
 
   actualizarRutinaExistente: async (id, cambios) => {
-    await ejecutarAccion(set, async (db) => {
-      await actualizarRutina(db, id, cambios)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.rutinas.actualizarRutina(id, cambios)
       return id
     }, () => {
       const rutinas = get().rutinas.map((r) =>
@@ -84,8 +74,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
   guardarRutinaExistente: async (id, datos) => {
     return ejecutarAccion(
       set,
-      async (db) => {
-        const guardada = await guardarRutina(db, id, datos)
+      async (_db, repos) => {
+        const guardada = await repos.rutinas.guardarRutina(id, datos)
         return guardada
       },
       (guardada) => {
@@ -114,8 +104,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
       set({ error: 'No hay rutina seleccionada para activar' })
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      await activarRutina(db, rutinaSeleccionada.id, usuarioId)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.rutinas.activarRutina(rutinaSeleccionada.id, usuarioId)
       return rutinaSeleccionada.id
     }, () => {
       const rutinas = get().rutinas.map((r) =>
@@ -126,8 +116,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
   },
 
   eliminarRutinaPorId: async (id) => {
-    await ejecutarAccion(set, async (db) => {
-      await eliminarRutina(db, id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.rutinas.eliminarRutina(id)
       return id
     }, () => {
       const rutinas = get().rutinas.filter((r) => r.id !== id)
@@ -137,8 +127,8 @@ export const useRutinasStore = create<RutinasEstado>((set, get) => ({
   },
 
   desactivarRutinaPorId: async (id) => {
-    await ejecutarAccion(set, async (db) => {
-      await desactivarRutina(db, id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.rutinas.desactivarRutina(id)
       return id
     }, () => {
       const rutinas = get().rutinas.map((r) =>

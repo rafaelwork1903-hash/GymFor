@@ -10,7 +10,6 @@ import { create } from 'zustand'
 
 import type { Ejercicio } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import { listarEjercicios } from '../db/repositories/ejercicio.repository'
 
 export interface EjerciciosEstado extends EstadoCarga {
   ejercicios: Ejercicio[]
@@ -36,7 +35,7 @@ export const useEjerciciosStore = create<EjerciciosEstado>((set, get) => ({
     if (get().ejercicios.length > 0) {
       return
     }
-    await ejecutarAccion(set, async (db) => listarEjercicios(db), (ejercicios) => ({
+    await ejecutarAccion(set, async (_db, repos) => repos.ejercicios.listarEjercicios(), (ejercicios) => ({
       ejercicios,
       ejerciciosPorId: construirMapa(ejercicios),
     }))

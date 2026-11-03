@@ -3,10 +3,10 @@
  * las tablas `rutinas`, `dias_rutina` y `ejercicios_en_rutina`.
  */
 
-import type { SQLiteDatabase } from 'expo-sqlite'
-
 import type { DiaRutina, EjercicioEnRutina, Rutina, GrupoMuscular, RutinaEditada } from '../../domain/types'
 import { ahoraISO, generarId } from '../../utils/id'
+import { aEnteroBooleano } from '../dialect'
+import type { ConexionBD } from '../port'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -15,10 +15,10 @@ interface RutinaFila {
   usuario_id: string | null
   nombre: string
   descripcion: string
-  activa: number
+  activa: number | boolean
   creado_en: string
   actualizado_en: string
-  sincronizado: number
+  sincronizado: number | boolean
 }
 
 export type EjercicioEnRutinaDetalle = EjercicioEnRutina & {
@@ -48,13 +48,17 @@ export interface NuevaRutina {
 }
 
 function aDominio(fila: RutinaFila): Rutina {
-  return { ...fila, activa: fila.activa === 1 ? 1 : 0, sincronizado: fila.sincronizado === 1 ? 1 : 0 }
+  return {
+    ...fila,
+    activa: aEnteroBooleano(fila.activa),
+    sincronizado: aEnteroBooleano(fila.sincronizado),
+  }
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
 /** Rutinas del usuario y plantillas de sistema (usuario_id NULL). */
-export async function listarRutinas(db: SQLiteDatabase, usuarioId?: string): Promise<Rutina[]> {
+export async function listarRutinas(db: ConexionBD, usuarioId?: string): Promise<Rutina[]> {
   const filas = usuarioId
     ? await db.getAllAsync<RutinaFila>(
         'SELECT * FROM rutinas WHERE usuario_id = ? OR usuario_id IS NULL ORDER BY nombre',
@@ -65,7 +69,7 @@ export async function listarRutinas(db: SQLiteDatabase, usuarioId?: string): Pro
 }
 
 export async function obtenerRutinaPorId(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
 ): Promise<Rutina | null> {
   const fila = await db.getFirstAsync<RutinaFila>('SELECT * FROM rutinas WHERE id = ?', [id])
@@ -74,7 +78,7 @@ export async function obtenerRutinaPorId(
 
 /** Rutina completa: días ordenados con sus ejercicios (join al catálogo). */
 export async function obtenerRutinaDetalle(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
 ): Promise<RutinaDetalle | null> {
   const rutina = await obtenerRutinaPorId(db, id)
@@ -111,7 +115,7 @@ export async function obtenerRutinaDetalle(
  * porque esta última no está soportada en web (lanza en runtime) — misma
  * convención que migraciones y seed.
  */
-export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Promise<Rutina> {
+export async function crearRutina(db: ConexionBD, rutina: NuevaRutina): Promise<Rutina> {
   const ahora = ahoraISO()
   const rutinaId = generarId()
 
@@ -162,7 +166,7 @@ export async function crearRutina(db: SQLiteDatabase, rutina: NuevaRutina): Prom
 }
 
 export async function actualizarRutina(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
   cambios: Partial<Pick<Rutina, 'nombre' | 'descripcion'>>,
 ): Promise<void> {
@@ -185,7 +189,7 @@ export async function actualizarRutina(
  * `withTransactionAsync` (no soportado en web el exclusivo) — ver crearRutina.
  */
 export async function activarRutina(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   rutinaId: string,
   usuarioId: string,
 ): Promise<void> {
@@ -200,14 +204,14 @@ export async function activarRutina(
 }
 
 /** Desactiva una rutina (activa = 0). Llamarla la deja sin rutina activa. */
-export async function desactivarRutina(db: SQLiteDatabase, id: string): Promise<void> {
+export async function desactivarRutina(db: ConexionBD, id: string): Promise<void> {
   await db.runAsync(
     'UPDATE rutinas SET activa = 0, actualizado_en = ?, sincronizado = 0 WHERE id = ?',
     [ahoraISO(), id],
   )
 }
 
-export async function eliminarRutina(db: SQLiteDatabase, id: string): Promise<void> {
+export async function eliminarRutina(db: ConexionBD, id: string): Promise<void> {
   // El borrado en cascada elimina días y ejercicios asociados.
   await db.runAsync('DELETE FROM rutinas WHERE id = ?', [id])
 }
@@ -221,7 +225,7 @@ export async function eliminarRutina(db: SQLiteDatabase, id: string): Promise<vo
  * Devuelve la `RutinaDetalle` actualizada.
  */
 export async function guardarRutina(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
   datos: RutinaEditada,
 ): Promise<RutinaDetalle> {
@@ -266,10 +270,23 @@ export async function guardarRutina(
       await db.runAsync('DELETE FROM dias_rutina WHERE id = ?', [dia.id])
     }
 
-    // 3. Desplazar órdenes existentes de días para evitar colisiones con UNIQUE(rutina_id, orden)
-    await db.runAsync('UPDATE dias_rutina SET orden = orden + 10000 WHERE rutina_id = ?', [id])
+    // 3. Fase 1 de renumeración: desplazar órdenes existentes fuera del rango
+    //    ocupado y del nuevo rango [1..N] para evitar colisiones transitorias
+    //    con UNIQUE(rutina_id, orden) en cualquier motor SQL.
+    const filaMaxDia = await db.getFirstAsync<{ max_orden: number | null }>(
+      'SELECT MAX(orden) AS max_orden FROM dias_rutina WHERE rutina_id = ?',
+      [id],
+    )
+    const maxOrdenDia = filaMaxDia?.max_orden != null ? Number(filaMaxDia.max_orden) : 0
+    if (maxOrdenDia > 0) {
+      const desplazamientoDia = Math.max(maxOrdenDia, datos.dias.length) + 1
+      await db.runAsync('UPDATE dias_rutina SET orden = orden + ? WHERE rutina_id = ?', [
+        desplazamientoDia,
+        id,
+      ])
+    }
 
-    // 4. Actualizar o insertar días
+    // 4. Fase 2: actualizar o insertar días en su orden definitivo [1..N]
     for (const [ordenDia, dia] of datos.dias.entries()) {
       const nuevoOrdenDia = ordenDia + 1
       let diaId: string
@@ -303,11 +320,19 @@ export async function guardarRutina(
         }
       }
 
-      // Desplazar órdenes para evitar colisión con UNIQUE(dia_id, orden)
-      await db.runAsync(
-        'UPDATE ejercicios_en_rutina SET orden = orden + 10000 WHERE dia_id = ?',
+      // Fase 1 de renumeración de ejercicios del día sin constante mágica
+      const filaMaxEj = await db.getFirstAsync<{ max_orden: number | null }>(
+        'SELECT MAX(orden) AS max_orden FROM ejercicios_en_rutina WHERE dia_id = ?',
         [diaId],
       )
+      const maxOrdenEj = filaMaxEj?.max_orden != null ? Number(filaMaxEj.max_orden) : 0
+      if (maxOrdenEj > 0) {
+        const desplazamientoEj = Math.max(maxOrdenEj, dia.ejercicios.length) + 1
+        await db.runAsync(
+          'UPDATE ejercicios_en_rutina SET orden = orden + ? WHERE dia_id = ?',
+          [desplazamientoEj, diaId],
+        )
+      }
 
       for (const [ordenEj, ejercicio] of dia.ejercicios.entries()) {
         const nuevoOrdenEj = ordenEj + 1

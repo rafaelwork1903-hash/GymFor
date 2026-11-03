@@ -4,7 +4,10 @@ import { useSesionStore, LIMITE_SESIONES_DETALLE } from '../src/store/sesion.sto
 
 jest.mock('../src/db/repositories/sesion.repository', () => ({
   crearSesion: jest.fn(),
+  finalizarSesion: jest.fn(),
   agregarSerie: jest.fn(),
+  actualizarSerie: jest.fn(),
+  eliminarSerie: jest.fn(),
   eliminarSesion: jest.fn(),
   obtenerSesionDetalle: jest.fn(),
   listarSesionesPorUsuario: jest.fn(),
@@ -20,7 +23,10 @@ jest.mock('../src/db/client', () => ({
 
 import {
   crearSesion,
+  finalizarSesion,
   agregarSerie,
+  actualizarSerie,
+  eliminarSerie,
   eliminarSesion,
   obtenerSesionDetalle,
   listarSesionesPorUsuario,
@@ -188,8 +194,11 @@ describe('useSesionStore', () => {
   })
 
   describe('finalizarSesion', () => {
-    it('éxito: actualiza BD y mueve a historial con nombres de rutina', async () => {
-      ;(obtenerBD as jest.Mock).mockResolvedValue({ runAsync: jest.fn().mockResolvedValue(undefined) })
+    it('éxito: actualiza BD vía repositorio y mueve a historial con nombres de rutina', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(finalizarSesion as jest.Mock).mockResolvedValue({
+        actualizado_en: '2026-11-03T10:00:00.000Z',
+      })
 
       const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
@@ -208,6 +217,11 @@ describe('useSesionStore', () => {
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(finalizarSesion).toHaveBeenCalledWith(expect.anything(), 's1', {
+        duracion_minutos: 60,
+        notas: null,
+        rpe_sesion: 8,
+      })
       expect(result.current.sesionActual).toBeNull()
       expect(result.current.sesiones).toHaveLength(1)
       expect(result.current.sesiones[0].duracion_minutos).toBe(60)
@@ -503,6 +517,263 @@ describe('useSesionStore', () => {
       await waitFor(() => expect(result.current.cargando).toBe(false))
       expect(result.current.error).toBe('Sesión no encontrada: s-desconocida')
       expect(result.current.detallesPorId['s-desconocida']).toBeUndefined()
+    })
+  })
+
+  describe('actualizarSerie', () => {
+    const serie1 = {
+      id: 'se-1',
+      registro_id: 'reg1',
+      numero_serie: 1,
+      peso_levantado: 60,
+      reps_realizadas: 10,
+      rpe_serie: 8,
+      rir: null,
+      completada: 1 as const,
+      notas: null,
+    }
+    const serie2 = {
+      id: 'se-2',
+      registro_id: 'reg1',
+      numero_serie: 2,
+      peso_levantado: 62.5,
+      reps_realizadas: 8,
+      rpe_serie: 9,
+      rir: null,
+      completada: 1 as const,
+      notas: null,
+    }
+
+    it('éxito: persiste en BD y refleja el cambio sin mutar otras series ni registros', async () => {
+      const serie1Actualizada = {
+        ...serie1,
+        peso_levantado: 65,
+        reps_realizadas: 9,
+        rpe_serie: 8.5,
+        notas: 'buena velocidad',
+      }
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(actualizarSerie as jest.Mock).mockResolvedValue(serie1Actualizada)
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: [serie1, serie2],
+              },
+              {
+                registro_id: 'reg2',
+                ejercicio_id: 'ej2',
+                ejercicio_nombre: 'Remo',
+                rpe_ejercicio: null,
+                series: [
+                  {
+                    ...serie1,
+                    id: 'se-otro',
+                    registro_id: 'reg2',
+                  },
+                ],
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      await act(async () => {
+        await result.current.actualizarSerie('reg1', 'se-1', {
+          peso_levantado: 65,
+          reps_realizadas: 9,
+          rpe_serie: 8.5,
+          notas: 'buena velocidad',
+        })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(actualizarSerie).toHaveBeenCalledWith({}, 'se-1', {
+        peso_levantado: 65,
+        reps_realizadas: 9,
+        rpe_serie: 8.5,
+        notas: 'buena velocidad',
+      })
+      expect(result.current.error).toBeNull()
+      expect(result.current.sesionActual?.registros[0].series[0]).toEqual(serie1Actualizada)
+      // La segunda serie y el otro registro permanecen intactos
+      expect(result.current.sesionActual?.registros[0].series[1]).toEqual(serie2)
+      expect(result.current.sesionActual?.registros[1].series[0].peso_levantado).toBe(60)
+    })
+
+    it('error: si el repo falla conserva el estado intacto y expone el error', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(actualizarSerie as jest.Mock).mockRejectedValue(new Error('SQLite busy'))
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: [serie1, serie2],
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      await act(async () => {
+        await result.current.actualizarSerie('reg1', 'se-1', { peso_levantado: 100 })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.error).toBe('SQLite busy')
+      expect(result.current.sesionActual?.registros[0].series).toEqual([serie1, serie2])
+    })
+
+    it('sin sesión activa: setea error sin tocar la BD', async () => {
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.actualizarSerie('reg1', 'se-1', { peso_levantado: 70 })
+      })
+
+      expect(result.current.error).toBe('No hay sesión activa')
+      expect(actualizarSerie).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('eliminarSerie', () => {
+    const seriesBase = [
+      {
+        id: 'se-1',
+        registro_id: 'reg1',
+        numero_serie: 1,
+        peso_levantado: 60,
+        reps_realizadas: 10,
+        rpe_serie: 7,
+        rir: null,
+        completada: 1 as const,
+        notas: null,
+      },
+      {
+        id: 'se-2',
+        registro_id: 'reg1',
+        numero_serie: 2,
+        peso_levantado: 65,
+        reps_realizadas: 8,
+        rpe_serie: 8,
+        rir: null,
+        completada: 1 as const,
+        notas: null,
+      },
+      {
+        id: 'se-3',
+        registro_id: 'reg1',
+        numero_serie: 3,
+        peso_levantado: 70,
+        reps_realizadas: 6,
+        rpe_serie: 9,
+        rir: null,
+        completada: 1 as const,
+        notas: 'última',
+      },
+    ]
+
+    it('éxito: persiste borrado, filtra la serie y renumera las restantes 1..N', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSerie as jest.Mock).mockResolvedValue(undefined)
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: seriesBase,
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      await act(async () => {
+        await result.current.eliminarSerie('reg1', 'se-2')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(eliminarSerie).toHaveBeenCalledWith({}, 'se-2')
+      expect(result.current.error).toBeNull()
+      const restantes = result.current.sesionActual?.registros[0].series ?? []
+      expect(restantes).toHaveLength(2)
+      expect(restantes.map((s) => ({ id: s.id, numero_serie: s.numero_serie }))).toEqual([
+        { id: 'se-1', numero_serie: 1 },
+        { id: 'se-3', numero_serie: 2 },
+      ])
+    })
+
+    it('error: si el repo falla conserva las series intactas y setea error', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSerie as jest.Mock).mockRejectedValue(new Error('FK error'))
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: seriesBase,
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      await act(async () => {
+        await result.current.eliminarSerie('reg1', 'se-2')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.error).toBe('FK error')
+      expect(result.current.sesionActual?.registros[0].series).toEqual(seriesBase)
+    })
+
+    it('sin sesión activa: setea error sin tocar la BD', async () => {
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.eliminarSerie('reg1', 'se-2')
+      })
+
+      expect(result.current.error).toBe('No hay sesión activa')
+      expect(eliminarSerie).not.toHaveBeenCalled()
     })
   })
 })
