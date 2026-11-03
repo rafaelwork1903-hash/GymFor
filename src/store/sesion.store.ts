@@ -63,7 +63,10 @@ export interface SesionEstado extends EstadoCarga {
     diaRutinaId: string
     usuarioId: string
   }) => Promise<void>
-  agregarSerie: (registroId: string, serie: Omit<SerieReal, 'id' | 'registro_id'>) => Promise<void>
+  agregarSerie: (
+    registroId: string,
+    serie: Omit<SerieReal, 'id' | 'registro_id'>,
+  ) => Promise<SerieReal | undefined>
   actualizarSerie: (
     registroId: string,
     serieId: string,
@@ -199,10 +202,10 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     const { sesionActual } = get()
     if (!sesionActual) {
       set({ error: 'No hay sesión activa' })
-      return
+      return undefined
     }
 
-    await ejecutarAccion(set, async (_db, repos) => {
+    return ejecutarAccion(set, async (_db, repos) => {
       const creada = await repos.sesiones.agregarSerie(registroId, serie)
       return (
         creada ?? {

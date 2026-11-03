@@ -22,10 +22,19 @@ import {
   MiniaturaEjercicio,
   ModalVisualEjercicio,
 } from '../../src/components/ejercicios/VisualEjercicio'
+import { TemporizadorDescanso } from '../../src/components/sesion/TemporizadorDescanso'
+import {
+  useCronometroSesion,
+  useTemporizadorDescanso,
+} from '../../src/hooks/useTemporizadorDescanso'
 import { useConfiguracionStore } from '../../src/store/configuracion.store'
 import { useEjerciciosStore } from '../../src/store/ejercicios.store'
 import { useRutinasStore } from '../../src/store/rutinas.store'
 import { useSesionStore, type CambiosSerie } from '../../src/store/sesion.store'
+import { calcularDuracionMinutos } from '../../src/utils/tiempo'
+
+/** Descanso manual por defecto cuando el ejercicio no define `descanso_segundos`. */
+const DESCANSO_POR_DEFECTO_SEGUNDOS = 60
 
 /** Registro en curso tal como lo expone `sesionActual` (subconjunto estructural). */
 interface RegistroSesion {
@@ -88,9 +97,10 @@ interface TarjetaEjercicioProps {
       completada: 1
       notas: null
     },
-  ) => void
+  ) => void | Promise<void>
   onEditarSerie: (registroId: string, ejercicioNombre: string, serie: SerieReal) => void
   onEliminarSerie: (registroId: string, serie: SerieReal) => void
+  onDescansar?: (ejercicioNombre: string, segundos: number) => void
   onVerDetalle?: () => void
 }
 
@@ -103,6 +113,7 @@ function TarjetaEjercicio({
   onAgregar,
   onEditarSerie,
   onEliminarSerie,
+  onDescansar,
   onVerDetalle,
 }: TarjetaEjercicioProps) {
   const [peso, setPeso] = useState('')
@@ -110,6 +121,11 @@ function TarjetaEjercicio({
   const [rpe, setRpe] = useState('')
   const [aviso, setAviso] = useState<string | null>(null)
   const tema = useTheme()
+
+  const segundosDescansoManual =
+    objetivo?.descanso_segundos != null && objetivo.descanso_segundos > 0
+      ? objetivo.descanso_segundos
+      : DESCANSO_POR_DEFECTO_SEGUNDOS
 
   const partesObjetivo: string[] = []
   if (objetivo) {
@@ -140,7 +156,7 @@ function TarjetaEjercicio({
       return
     }
     setAviso(null)
-    onAgregar(registro.registro_id, {
+    void onAgregar(registro.registro_id, {
       numero_serie: registro.series.length + 1,
       peso_levantado: pesoNum,
       reps_realizadas: repsNum,
@@ -172,16 +188,29 @@ function TarjetaEjercicio({
             ) : null}
           </YStack>
         </XStack>
-        {onVerDetalle && (
-          <Pressable
-            onPress={onVerDetalle}
-            accessibilityRole="button"
-            accessibilityLabel={`Ver técnica y demostración de ${registro.ejercicio_nombre}`}
-            hitSlop={8}
-          >
-            <Ionicons name="eye-outline" size={22} color={tema.blue9?.val} />
-          </Pressable>
-        )}
+        <XStack alignItems="center" gap="$2.5">
+          {onDescansar ? (
+            <Pressable
+              onPress={() => onDescansar(registro.ejercicio_nombre, segundosDescansoManual)}
+              accessibilityRole="button"
+              accessibilityLabel={`Iniciar descanso de ${segundosDescansoManual} segundos para ${registro.ejercicio_nombre}`}
+              aria-label={`Iniciar descanso de ${segundosDescansoManual} segundos para ${registro.ejercicio_nombre}`}
+              hitSlop={8}
+            >
+              <Ionicons name="timer-outline" size={22} color={tema.blue9?.val} />
+            </Pressable>
+          ) : null}
+          {onVerDetalle && (
+            <Pressable
+              onPress={onVerDetalle}
+              accessibilityRole="button"
+              accessibilityLabel={`Ver técnica y demostración de ${registro.ejercicio_nombre}`}
+              hitSlop={8}
+            >
+              <Ionicons name="eye-outline" size={22} color={tema.blue9?.val} />
+            </Pressable>
+          )}
+        </XStack>
       </XStack>
 
       {registro.series.length > 0 ? (
@@ -560,14 +589,22 @@ function ModalEditarSerie({
 interface ModalFinalizarProps {
   visible: boolean
   ocupado: boolean
+  duracionMinutos: number
   error: string | null
   onCerrar: () => void
   /** Devuelve true si la sesión se finalizó correctamente. */
   onFinalizar: (datos: { rpe_sesion: number | null; notas: string | null }) => Promise<boolean>
 }
 
-/** Modal de cierre de sesión: RPE global (1-10, opcional) + notas. */
-function ModalFinalizar({ visible, ocupado, error, onCerrar, onFinalizar }: ModalFinalizarProps) {
+/** Modal de cierre de sesión: duración estimada, RPE global (1-10, opcional) + notas. */
+function ModalFinalizar({
+  visible,
+  ocupado,
+  duracionMinutos,
+  error,
+  onCerrar,
+  onFinalizar,
+}: ModalFinalizarProps) {
   const [rpe, setRpe] = useState('')
   const [notas, setNotas] = useState('')
   const tema = useTheme()
@@ -616,9 +653,14 @@ function ModalFinalizar({ visible, ocupado, error, onCerrar, onFinalizar }: Moda
             borderWidth={1}
             borderColor="$borderColor"
           >
-            <Text fontSize="$5" fontWeight="bold" color="$color">
-              Finalizar sesión
-            </Text>
+            <YStack gap="$0.5">
+              <Text fontSize="$5" fontWeight="bold" color="$color">
+                Finalizar sesión
+              </Text>
+              <Text fontSize="$2" color="$gray10">
+                Duración: ~{duracionMinutos} min
+              </Text>
+            </YStack>
 
             <YStack gap="$1">
               <Label fontSize="$2" color="$gray10">
@@ -719,7 +761,10 @@ export default function SesionScreen() {
   const tema = useTheme()
   const [diaElegidoId, setDiaElegidoId] = useState<string | null>(null)
   const [modalFinalizarAbierto, setModalFinalizarAbierto] = useState(false)
-  const [sesionTerminada, setSesionTerminada] = useState<{ volumen: number } | null>(null)
+  const [sesionTerminada, setSesionTerminada] = useState<{
+    volumen: number
+    duracionMinutos: number
+  } | null>(null)
   const [serieOcupadaId, setSerieOcupadaId] = useState<string | null>(null)
   const [serieEditando, setSerieEditando] = useState<SerieEnEdicion | null>(null)
   const [accionFallidaSerie, setAccionFallidaSerie] = useState<
@@ -731,6 +776,9 @@ export default function SesionScreen() {
     ejercicio: Ejercicio
     imagenUrl: string | null
   } | null>(null)
+
+  const cronometroSesion = useCronometroSesion(sesionActual?.sesion.creado_en ?? null)
+  const temporizador = useTemporizadorDescanso({ habilitado: Boolean(sesionActual) })
 
   useEffect(() => {
     void cargarEjercicios()
@@ -806,6 +854,7 @@ export default function SesionScreen() {
     if (!rutinaActiva || !diaElegido || !usuarioId) {
       return
     }
+    temporizador.saltar()
     setSesionTerminada(null)
     await iniciarSesion({
       rutinaId: rutinaActiva.id,
@@ -815,17 +864,20 @@ export default function SesionScreen() {
   }
 
   const finalizar = async (datos: { rpe_sesion: number | null; notas: string | null }) => {
-    // El volumen se captura antes de finalizar: la sesión deja de estar en curso.
+    if (!sesionActual) {
+      return false
+    }
+    // El volumen y la duración real se capturan antes de finalizar: la sesión deja de estar en curso.
     const volumen = volumenSesion
-    // El store tipa los campos como opcionales; `null` se traduce a "sin dato"
-    // (la duración automática desde `creado_en` queda como tarea futura).
+    const duracion = calcularDuracionMinutos(sesionActual.sesion.creado_en)
     await finalizarSesion({
-      duracion_minutos: undefined,
+      duracion_minutos: duracion,
       notas: datos.notas ?? undefined,
       rpe_sesion: datos.rpe_sesion ?? undefined,
     })
     if (!useSesionStore.getState().sesionActual) {
-      setSesionTerminada({ volumen })
+      temporizador.saltar()
+      setSesionTerminada({ volumen, duracionMinutos: duracion })
       setDiaElegidoId(null)
       return true
     }
@@ -956,7 +1008,8 @@ export default function SesionScreen() {
             ¡Sesión registrada!
           </Text>
           <Text fontSize="$3" color="$gray11" textAlign="center">
-            Volumen total: {formatearCantidad(sesionTerminada.volumen)} kg
+            Volumen {formatearCantidad(sesionTerminada.volumen)} kg · Duración{' '}
+            {sesionTerminada.duracionMinutos} min
           </Text>
           <Text fontSize="$2" color="$gray10" textAlign="center">
             Ya puedes verla en «Actividad reciente» del Dashboard.
@@ -1003,14 +1056,29 @@ export default function SesionScreen() {
                   {sesionActual.nombre_dia}
                 </Text>
               </YStack>
-              <YStack alignItems="flex-end" gap="$0.5">
-                <Text fontSize="$1" color="$gray9">
-                  Volumen
-                </Text>
-                <Text fontSize="$4" fontWeight="bold" color="$color">
-                  {formatearCantidad(volumenSesion)} kg
-                </Text>
-              </YStack>
+              <XStack gap="$4" alignItems="flex-end">
+                <YStack alignItems="flex-end" gap="$0.5">
+                  <Text fontSize="$1" color="$gray9">
+                    Tiempo
+                  </Text>
+                  <Text
+                    fontSize="$4"
+                    fontWeight="bold"
+                    color="$color"
+                    accessibilityLabel={`Tiempo transcurrido de sesión: ${cronometroSesion.textoMMSS}`}
+                  >
+                    {cronometroSesion.textoMMSS}
+                  </Text>
+                </YStack>
+                <YStack alignItems="flex-end" gap="$0.5">
+                  <Text fontSize="$1" color="$gray9">
+                    Volumen
+                  </Text>
+                  <Text fontSize="$4" fontWeight="bold" color="$color">
+                    {formatearCantidad(volumenSesion)} kg
+                  </Text>
+                </YStack>
+              </XStack>
             </XStack>
             <XStack gap="$2" marginTop="$1">
               <Button
@@ -1040,6 +1108,21 @@ export default function SesionScreen() {
               </Button>
             </XStack>
           </Card>
+
+          {temporizador.activo && temporizador.ejercicioNombre ? (
+            <TemporizadorDescanso
+              ejercicioNombre={temporizador.ejercicioNombre}
+              segundosTotales={temporizador.segundosTotales}
+              segundosRestantes={temporizador.segundosRestantes}
+              textoRestante={temporizador.textoRestante}
+              pausado={temporizador.pausado}
+              terminado={temporizador.terminado}
+              onPausar={temporizador.pausar}
+              onReanudar={temporizador.reanudar}
+              onAgregarTiempo={temporizador.agregarTiempo}
+              onSaltar={temporizador.saltar}
+            />
+          ) : null}
         </YStack>
 
         <ScrollView flex={1}>
@@ -1049,43 +1132,56 @@ export default function SesionScreen() {
                 Este día no tiene ejercicios configurados.
               </Text>
             ) : (
-              sesionActual.registros.map((registro) => (
-                <TarjetaEjercicio
-                  key={registro.registro_id}
-                  registro={registro}
-                  objetivo={objetivosPorEjercicio.get(registro.ejercicio_id)}
-                  ocupado={cargando}
-                  serieOcupadaId={serieOcupadaId}
-                  onAgregar={(registroId, serie) => {
-                    setAccionFallidaSerie(null)
-                    void agregarSerie(registroId, serie)
-                  }}
-                  onEditarSerie={(registroId, ejercicioNombre, serie) => {
-                    limpiarError()
-                    setAccionFallidaSerie(null)
-                    setSerieEditando({ registroId, ejercicioNombre, serie })
-                  }}
-                  onEliminarSerie={confirmarEliminarSerie}
-                  onVerDetalle={() => {
-                    const objetivo = objetivosPorEjercicio.get(registro.ejercicio_id)
-                    const ej = ejerciciosPorId.get(registro.ejercicio_id) ?? {
-                      id: registro.ejercicio_id,
-                      nombre: registro.ejercicio_nombre,
-                      grupo_muscular_primario: 'cuerpo_completo' as const,
-                      grupos_musculares_secundarios: [],
-                      equipamiento: 'peso_corporal' as const,
-                      es_compuesto: 0 as const,
-                      factor_fraccional: 1.0,
-                      instrucciones: null,
-                      video_url: null,
-                    }
-                    setDetalleModal({
-                      ejercicio: ej,
-                      imagenUrl: objetivo?.imagen_url ?? registro.imagen_url ?? null,
-                    })
-                  }}
-                />
-              ))
+              sesionActual.registros.map((registro) => {
+                const objetivoEjercicio = objetivosPorEjercicio.get(registro.ejercicio_id)
+                return (
+                  <TarjetaEjercicio
+                    key={registro.registro_id}
+                    registro={registro}
+                    objetivo={objetivoEjercicio}
+                    ocupado={cargando}
+                    serieOcupadaId={serieOcupadaId}
+                    onAgregar={async (registroId, serie) => {
+                      setAccionFallidaSerie(null)
+                      const creada = await agregarSerie(registroId, serie)
+                      if (
+                        creada &&
+                        objetivoEjercicio?.descanso_segundos &&
+                        objetivoEjercicio.descanso_segundos > 0
+                      ) {
+                        temporizador.iniciarDescanso(
+                          registro.ejercicio_nombre,
+                          objetivoEjercicio.descanso_segundos,
+                        )
+                      }
+                    }}
+                    onDescansar={temporizador.iniciarDescanso}
+                    onEditarSerie={(registroId, ejercicioNombre, serie) => {
+                      limpiarError()
+                      setAccionFallidaSerie(null)
+                      setSerieEditando({ registroId, ejercicioNombre, serie })
+                    }}
+                    onEliminarSerie={confirmarEliminarSerie}
+                    onVerDetalle={() => {
+                      const ej = ejerciciosPorId.get(registro.ejercicio_id) ?? {
+                        id: registro.ejercicio_id,
+                        nombre: registro.ejercicio_nombre,
+                        grupo_muscular_primario: 'cuerpo_completo' as const,
+                        grupos_musculares_secundarios: [],
+                        equipamiento: 'peso_corporal' as const,
+                        es_compuesto: 0 as const,
+                        factor_fraccional: 1.0,
+                        instrucciones: null,
+                        video_url: null,
+                      }
+                      setDetalleModal({
+                        ejercicio: ej,
+                        imagenUrl: objetivoEjercicio?.imagen_url ?? registro.imagen_url ?? null,
+                      })
+                    }}
+                  />
+                )
+              })
             )}
           </YStack>
         </ScrollView>
@@ -1101,6 +1197,7 @@ export default function SesionScreen() {
         <ModalFinalizar
           visible={modalFinalizarAbierto}
           ocupado={cargando}
+          duracionMinutos={cronometroSesion.duracionMinutos}
           error={errorSesion}
           onCerrar={() => setModalFinalizarAbierto(false)}
           onFinalizar={finalizar}

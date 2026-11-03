@@ -174,11 +174,12 @@ describe('useSesionStore', () => {
       expect(agregarSerie).toHaveBeenCalled()
     })
 
-    it('sin sesión activa: setea error', async () => {
+    it('sin sesión activa: setea error y devuelve undefined', async () => {
       const { result } = await renderHook(() => useSesionStore())
 
+      let devuelta: unknown = 'inicial'
       await act(async () => {
-        await result.current.agregarSerie('reg1', {
+        devuelta = await result.current.agregarSerie('reg1', {
           numero_serie: 1,
           peso_levantado: 60,
           reps_realizadas: 10,
@@ -189,7 +190,104 @@ describe('useSesionStore', () => {
         })
       })
 
+      expect(devuelta).toBeUndefined()
       expect(result.current.error).toBe('No hay sesión activa')
+    })
+
+    it('devuelve la serie persistida cuando el repo tiene éxito', async () => {
+      const seriePersistida = {
+        id: 'serie-bd-1',
+        registro_id: 'reg1',
+        numero_serie: 1,
+        peso_levantado: 80,
+        reps_realizadas: 6,
+        rpe_serie: 9,
+        rir: null,
+        completada: 1 as const,
+        notas: null,
+      }
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(agregarSerie as jest.Mock).mockResolvedValue(seriePersistida)
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: [],
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      let devuelta: unknown
+      await act(async () => {
+        devuelta = await result.current.agregarSerie('reg1', {
+          numero_serie: 1,
+          peso_levantado: 80,
+          reps_realizadas: 6,
+          rpe_serie: 9,
+          rir: null,
+          completada: 1,
+          notas: null,
+        })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(devuelta).toEqual(seriePersistida)
+      expect(result.current.sesionActual?.registros[0].series[0]).toEqual(seriePersistida)
+    })
+
+    it('devuelve undefined y conserva las series previas si el repo falla', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(agregarSerie as jest.Mock).mockRejectedValue(new Error('Fallo de escritura'))
+
+      const { result } = await renderHook(() => useSesionStore())
+      await act(async () => {
+        useSesionStore.setState({
+          sesionActual: {
+            sesion: mockSesionBase,
+            registros: [
+              {
+                registro_id: 'reg1',
+                ejercicio_id: 'ej1',
+                ejercicio_nombre: 'Press banca',
+                rpe_ejercicio: null,
+                series: [],
+              },
+            ],
+            rutina_nombre: 'Rutina',
+            nombre_dia: 'Dia 1',
+          },
+        })
+      })
+
+      let devuelta: unknown = 'inicial'
+      await act(async () => {
+        devuelta = await result.current.agregarSerie('reg1', {
+          numero_serie: 1,
+          peso_levantado: 80,
+          reps_realizadas: 6,
+          rpe_serie: 9,
+          rir: null,
+          completada: 1,
+          notas: null,
+        })
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(devuelta).toBeUndefined()
+      expect(result.current.sesionActual?.registros[0].series).toHaveLength(0)
+      expect(result.current.error).toBe('Fallo de escritura')
     })
   })
 
