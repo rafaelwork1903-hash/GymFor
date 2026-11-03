@@ -79,7 +79,10 @@ export async function actualizarUsuario(
   if (!actual) {
     throw new Error(`Usuario no encontrado: ${id}`)
   }
-  const fusionado: NuevoUsuario = { ...actual, ...cambios }
+  const cambiosDefinidos = Object.fromEntries(
+    Object.entries(cambios).filter(([, valor]) => valor !== undefined),
+  ) as Partial<Omit<NuevoUsuario, 'id'>>
+  const fusionado: NuevoUsuario = { ...actual, ...cambiosDefinidos }
   await db.runAsync(
     `UPDATE usuarios SET
       nombre = ?, fecha_nacimiento = ?, sexo = ?, peso_inicial = ?, objetivo = ?,

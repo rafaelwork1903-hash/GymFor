@@ -282,16 +282,31 @@ export default function DashboardScreen() {
               </XStack>
             ) : null}
           </YStack>
-          <Button
-            size="$3"
-            circular
-            borderWidth={1}
-            borderColor="$borderColor"
-            backgroundColor="transparent"
-            icon={<Ionicons name={ICONOS_TEMA[temaPreferido]} size={18} color={tema.color?.val} />}
-            onPress={() => cambiarTema(SIGUIENTE_TEMA[temaPreferido])}
-            aria-label={`Tema: ${ETIQUETAS_TEMA[temaPreferido]}. Toca para cambiar.`}
-          />
+          <XStack gap="$2" alignItems="center">
+            <Button
+              size="$3"
+              borderWidth={1}
+              borderColor="$borderColor"
+              backgroundColor="transparent"
+              color="$color"
+              icon={<Ionicons name="person-circle-outline" size={18} color={tema.color?.val} />}
+              onPress={() => router.push('/perfil')}
+              accessibilityLabel="Editar perfil"
+              aria-label="Editar perfil"
+            >
+              Editar perfil
+            </Button>
+            <Button
+              size="$3"
+              circular
+              borderWidth={1}
+              borderColor="$borderColor"
+              backgroundColor="transparent"
+              icon={<Ionicons name={ICONOS_TEMA[temaPreferido]} size={18} color={tema.color?.val} />}
+              onPress={() => cambiarTema(SIGUIENTE_TEMA[temaPreferido])}
+              aria-label={`Tema: ${ETIQUETAS_TEMA[temaPreferido]}. Toca para cambiar.`}
+            />
+          </XStack>
         </XStack>
 
         {/* ── Rutina activa ───────────────────────────────────────── */}
