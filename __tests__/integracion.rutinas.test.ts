@@ -1,5 +1,4 @@
-import type { SQLiteDatabase } from 'expo-sqlite'
-
+import type { ConexionBD } from '../src/db/port'
 import { repararRutinasActivasMultiples } from '../src/db/migrations'
 import { useRutinasStore } from '../src/store/rutinas.store'
 
@@ -56,7 +55,7 @@ describe('integración rutinas: invariante de una sola rutina activa', () => {
   beforeEach(async () => {
     adaptador = new AdaptadorSQLite()
     await sembrarRutinas(adaptador)
-    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as ConexionBD)
     useRutinasStore.setState({
       rutinas: [],
       rutinaSeleccionada: null,
@@ -152,7 +151,7 @@ describe('integración rutinas: creación completa con días y ejercicios (issue
       [AHORA, AHORA],
     )
     await sembrarCatalogo(adaptador)
-    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as ConexionBD)
     useRutinasStore.setState({
       rutinas: [],
       rutinaSeleccionada: null,
@@ -377,7 +376,7 @@ describe('integración rutinas: edición de rutina existente (issue #25)', () =>
       [AHORA, AHORA],
     )
     await sembrarCatalogo(adaptador)
-    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as ConexionBD)
     useRutinasStore.setState({
       rutinas: [],
       rutinaSeleccionada: null,
@@ -764,7 +763,7 @@ describe('integración rutinas: imagen personalizada por ejercicio (issue #29)',
       [AHORA, AHORA],
     )
     await sembrarCatalogo(adaptador)
-    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as SQLiteDatabase)
+    ;(obtenerBD as jest.Mock).mockResolvedValue(comoBD(adaptador) as ConexionBD)
     useRutinasStore.setState({
       rutinas: [],
       rutinaSeleccionada: null,

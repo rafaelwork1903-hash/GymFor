@@ -11,11 +11,6 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Usuario, Objetivo, Nivel, Sexo } from '../domain/types'
 import { generarId } from '../utils/id'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import {
-  obtenerUsuarioPorId,
-  listarUsuarios,
-  crearUsuario,
-} from '../db/repositories/usuario.repository'
 
 /** Preferencia de tema: seguir al sistema o forzar claro/oscuro. */
 export type Tema = 'sistema' | 'claro' | 'oscuro'
@@ -63,8 +58,8 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
         set({ tema }),
 
       cargarUsuario: async (id: string) => {
-        await ejecutarAccion(set, async (db) => {
-          const usuario = await obtenerUsuarioPorId(db, id)
+        await ejecutarAccion(set, async (_db, repos) => {
+          const usuario = await repos.usuarios.obtenerUsuarioPorId(id)
           if (!usuario) {
             throw new Error(`Usuario no encontrado: ${id}`)
           }
@@ -73,7 +68,7 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
       },
 
       crearUsuarioInicial: async (datos) => {
-        await ejecutarAccion(set, async (db) => {
+        await ejecutarAccion(set, async (_db, repos) => {
           const nuevoUsuario: Usuario = {
             // `crypto.randomUUID` no existe en Hermes (nativo): usar
             // `generarId` (UUID v4 con fallback, ver src/utils/id.ts).
@@ -89,7 +84,7 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
             actualizado_en: new Date().toISOString(),
             sincronizado: 0,
           }
-          await crearUsuario(db, nuevoUsuario)
+          await repos.usuarios.crearUsuario(nuevoUsuario)
           return nuevoUsuario
         }, (usuario) => ({ usuarioActivo: usuario }))
       },
@@ -99,8 +94,8 @@ export const useConfiguracionStore = create<ConfiguracionEstado>()(
         if (get().usuarioActivo) {
           return
         }
-        await ejecutarAccion(set, async (db) => {
-          const existentes = await listarUsuarios(db)
+        await ejecutarAccion(set, async (_db, repos) => {
+          const existentes = await repos.usuarios.listarUsuarios()
           return existentes[0] ?? null
         }, (usuario) => (usuario ? { usuarioActivo: usuario } : {}))
         if (!get().usuarioActivo) {

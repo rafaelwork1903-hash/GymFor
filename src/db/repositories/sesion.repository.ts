@@ -3,12 +3,13 @@
  * tablas `sesiones`, `registros_ejercicio` y `series`.
  */
 
-import type { SQLiteDatabase } from 'expo-sqlite'
-
 import type { RegistroEjercicio, SerieReal, SesionEntrenamiento, SesionResumen } from '../../domain/types'
 import { ahoraISO, generarId } from '../../utils/id'
+import { aEnteroBooleano } from '../dialect'
+import type { ConexionBD } from '../port'
 
-interface SesionFila extends SesionEntrenamiento {
+interface SesionFila extends Omit<SesionEntrenamiento, 'sincronizado'> {
+  sincronizado: number | boolean
   rutina_nombre: string | null
   nombre_dia: string | null
 }
@@ -32,6 +33,13 @@ export type CambiosSerie = Partial<
   >
 >
 
+/** Datos opcionales al cerrar una sesión activa. */
+export interface DatosFinalizarSesion {
+  duracion_minutos?: number | null
+  notas?: string | null
+  rpe_sesion?: number | null
+}
+
 /** Nueva sesión completa con sus ejercicios y series ejecutadas. */
 export interface NuevaSesion {
   sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
@@ -45,7 +53,11 @@ export interface NuevaSesion {
 }
 
 function aDominio(fila: SesionFila): SesionResumen {
-  return { ...fila, sincronizado: fila.sincronizado === 1 ? 1 : 0 }
+  return { ...fila, sincronizado: aEnteroBooleano(fila.sincronizado) }
+}
+
+function aSerieDominio(fila: Omit<SerieReal, 'completada'> & { completada: number | boolean }): SerieReal {
+  return { ...fila, completada: aEnteroBooleano(fila.completada) }
 }
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
@@ -56,7 +68,7 @@ function aDominio(fila: SesionFila): SesionResumen {
  * pero se tolera NULL por robustez ante datos externos).
  */
 export async function listarSesionesPorUsuario(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   usuarioId: string,
   rango: { desde?: string; hasta?: string } = {},
 ): Promise<SesionResumen[]> {
@@ -82,7 +94,7 @@ export async function listarSesionesPorUsuario(
 }
 
 export async function obtenerSesionDetalle(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
 ): Promise<SesionDetalle | null> {
   const fila = await db.getFirstAsync<SesionFila>('SELECT * FROM sesiones WHERE id = ?', [id])
@@ -101,11 +113,10 @@ export async function obtenerSesionDetalle(
 
   const registrosDetalle: RegistroEjercicioDetalle[] = []
   for (const registro of registros) {
-    const series = await db.getAllAsync<SerieReal>(
-      'SELECT * FROM series WHERE registro_id = ? ORDER BY numero_serie',
-      [registro.id],
-    )
-    registrosDetalle.push({ ...registro, series })
+    const series = await db.getAllAsync<
+      Omit<SerieReal, 'completada'> & { completada: number | boolean }
+    >('SELECT * FROM series WHERE registro_id = ? ORDER BY numero_serie', [registro.id])
+    registrosDetalle.push({ ...registro, series: series.map(aSerieDominio) })
   }
 
   return { ...aDominio(fila), registros: registrosDetalle }
@@ -123,7 +134,7 @@ export async function obtenerSesionDetalle(
  * porque esta última no está soportada en web (lanza en runtime) — misma
  * convención que migraciones y seed.
  */
-export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promise<SesionEntrenamiento> {
+export async function crearSesion(db: ConexionBD, nueva: NuevaSesion): Promise<SesionEntrenamiento> {
   const ahora = ahoraISO()
 
   await db.withTransactionAsync(async () => {
@@ -177,9 +188,34 @@ export async function crearSesion(db: SQLiteDatabase, nueva: NuevaSesion): Promi
   return { ...nueva.sesion, creado_en: ahora, actualizado_en: ahora, sincronizado: 0 }
 }
 
+/**
+ * Persiste el cierre de una sesión en curso (duración, notas y RPE global).
+ * Centraliza la mutación en el repositorio para mantener los stores sin SQL.
+ */
+export async function finalizarSesion(
+  db: ConexionBD,
+  sesionId: string,
+  datos: DatosFinalizarSesion = {},
+): Promise<{ actualizado_en: string }> {
+  const actualizadoEn = ahoraISO()
+  await db.runAsync(
+    `UPDATE sesiones
+     SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, actualizado_en = ?, sincronizado = 0
+     WHERE id = ?`,
+    [
+      datos.duracion_minutos ?? null,
+      datos.notas ?? null,
+      datos.rpe_sesion ?? null,
+      actualizadoEn,
+      sesionId,
+    ],
+  )
+  return { actualizado_en: actualizadoEn }
+}
+
 /** Añade una serie a un registro existente (sesión activa en curso). */
 export async function agregarSerie(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   registroId: string,
   serie: Omit<SerieReal, 'id' | 'registro_id'>,
 ): Promise<SerieReal> {
@@ -209,7 +245,7 @@ export async function agregarSerie(
  * Las FK `ON DELETE CASCADE` borran automáticamente sus registros y series
  * (a diferencia de dejar la fila huérfana).
  */
-export async function eliminarSesion(db: SQLiteDatabase, id: string): Promise<void> {
+export async function eliminarSesion(db: ConexionBD, id: string): Promise<void> {
   await db.runAsync('DELETE FROM sesiones WHERE id = ?', [id])
 }
 
@@ -218,11 +254,13 @@ export async function eliminarSesion(db: SQLiteDatabase, id: string): Promise<vo
  * Valida que la fila exista e ignora `numero_serie` (gestionado internamente).
  */
 export async function actualizarSerie(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   serieId: string,
   cambios: CambiosSerie,
 ): Promise<SerieReal> {
-  const actual = await db.getFirstAsync<SerieReal>('SELECT * FROM series WHERE id = ?', [serieId])
+  const actual = await db.getFirstAsync<
+    Omit<SerieReal, 'completada'> & { completada: number | boolean }
+  >('SELECT * FROM series WHERE id = ?', [serieId])
   if (!actual) {
     throw new Error(`Serie no encontrada: ${serieId}`)
   }
@@ -239,7 +277,7 @@ export async function actualizarSerie(
       cambios.reps_realizadas !== undefined ? cambios.reps_realizadas : actual.reps_realizadas,
     rpe_serie: cambios.rpe_serie !== undefined ? cambios.rpe_serie : actual.rpe_serie,
     rir: cambios.rir !== undefined ? cambios.rir : actual.rir,
-    completada: completadaRaw === 1 ? 1 : 0,
+    completada: aEnteroBooleano(completadaRaw),
     notas: cambios.notas !== undefined ? cambios.notas : actual.notas,
   }
 
@@ -263,10 +301,21 @@ export async function actualizarSerie(
 
 /**
  * Elimina una serie registrada y renumera de forma contigua (1..N) las series
- * posteriores del mismo registro dentro de una transacción `withTransactionAsync`
- * (portátil nativo + web), manteniendo la invariante de `UNIQUE(registro_id, numero_serie)`.
+ * posteriores del mismo registro mediante **dos fases** dentro de una
+ * transacción `withTransactionAsync`.
+ *
+ * Por qué dos fases:
+ * - Un único `SET numero_serie = numero_serie - 1` depende de que el motor
+ *   procese las filas en orden ascendente de `numero_serie`. Si las series
+ *   fueron reordenadas (su orden físico/`rowid` difiere de `numero_serie`) o
+ *   en motores SQL con escaneo físico distinto (PostgreSQL, MySQL), se produce
+ *   una colisión transitoria en `UNIQUE(registro_id, numero_serie)`.
+ * - Fase 1 desplaza `(k .. M]` a `(M + k .. 2*M]` (disjunto de `[1 .. M]` y
+ *   `> 0`, respetando `CHECK (numero_serie > 0)`).
+ * - Fase 2 desplaza `(M + k .. 2*M]` a `[k .. M - 1]` (disjunto tanto de
+ *   `[1 .. k - 1]` como del rango temporal `> M`).
  */
-export async function eliminarSerie(db: SQLiteDatabase, serieId: string): Promise<void> {
+export async function eliminarSerie(db: ConexionBD, serieId: string): Promise<void> {
   await db.withTransactionAsync(async () => {
     const actual = await db.getFirstAsync<Pick<SerieReal, 'registro_id' | 'numero_serie'>>(
       'SELECT registro_id, numero_serie FROM series WHERE id = ?',
@@ -277,11 +326,84 @@ export async function eliminarSerie(db: SQLiteDatabase, serieId: string): Promis
     }
 
     await db.runAsync('DELETE FROM series WHERE id = ?', [serieId])
-    await db.runAsync(
-      `UPDATE series
-       SET numero_serie = numero_serie - 1
-       WHERE registro_id = ? AND numero_serie > ?`,
+
+    const filaMax = await db.getFirstAsync<{ max_numero: number | null }>(
+      'SELECT MAX(numero_serie) AS max_numero FROM series WHERE registro_id = ? AND numero_serie > ?',
       [actual.registro_id, actual.numero_serie],
     )
+    const maxNumero = filaMax?.max_numero != null ? Number(filaMax.max_numero) : null
+
+    if (maxNumero !== null && maxNumero > actual.numero_serie) {
+      const desplazamiento = maxNumero
+      await db.runAsync(
+        `UPDATE series
+         SET numero_serie = numero_serie + ?
+         WHERE registro_id = ? AND numero_serie > ?`,
+        [desplazamiento, actual.registro_id, actual.numero_serie],
+      )
+      await db.runAsync(
+        `UPDATE series
+         SET numero_serie = numero_serie - ?
+         WHERE registro_id = ? AND numero_serie > ?`,
+        [desplazamiento + 1, actual.registro_id, desplazamiento],
+      )
+    }
+  })
+}
+
+/**
+ * Reordena las series de un registro asignando `numero_serie` contiguo `1..N`
+ * según el orden de `serieIdsEnOrden`, usando desplazamiento en dos fases para
+ * evitar colisiones transitorias en `UNIQUE(registro_id, numero_serie)` en
+ * cualquier motor SQL.
+ */
+export async function reordenarSeries(
+  db: ConexionBD,
+  registroId: string,
+  serieIdsEnOrden: readonly string[],
+): Promise<void> {
+  const unicos = new Set(serieIdsEnOrden)
+  if (unicos.size !== serieIdsEnOrden.length) {
+    throw new Error('La lista de series a reordenar contiene IDs duplicados')
+  }
+
+  await db.withTransactionAsync(async () => {
+    const existentes = await db.getAllAsync<{ id: string; numero_serie: number }>(
+      'SELECT id, numero_serie FROM series WHERE registro_id = ?',
+      [registroId],
+    )
+
+    if (
+      existentes.length !== serieIdsEnOrden.length ||
+      existentes.some((fila) => !unicos.has(fila.id))
+    ) {
+      throw new Error(
+        `Los IDs proporcionados no coinciden con las series del registro: ${registroId}`,
+      )
+    }
+
+    if (existentes.length === 0) {
+      return
+    }
+
+    const maxActual = existentes.reduce(
+      (max, fila) => (fila.numero_serie > max ? fila.numero_serie : max),
+      0,
+    )
+    const desplazamiento = Math.max(maxActual, serieIdsEnOrden.length)
+
+    // Fase 1: mover todas las series del registro a (desplazamiento .. desplazamiento + maxActual]
+    await db.runAsync(
+      'UPDATE series SET numero_serie = numero_serie + ? WHERE registro_id = ?',
+      [desplazamiento, registroId],
+    )
+
+    // Fase 2: asignar posiciones definitivas 1..N (disjuntas de > desplazamiento)
+    for (const [indice, id] of serieIdsEnOrden.entries()) {
+      await db.runAsync(
+        'UPDATE series SET numero_serie = ? WHERE id = ? AND registro_id = ?',
+        [indice + 1, id, registroId],
+      )
+    }
   })
 }

@@ -4,6 +4,7 @@ import { useSesionStore, LIMITE_SESIONES_DETALLE } from '../src/store/sesion.sto
 
 jest.mock('../src/db/repositories/sesion.repository', () => ({
   crearSesion: jest.fn(),
+  finalizarSesion: jest.fn(),
   agregarSerie: jest.fn(),
   actualizarSerie: jest.fn(),
   eliminarSerie: jest.fn(),
@@ -22,6 +23,7 @@ jest.mock('../src/db/client', () => ({
 
 import {
   crearSesion,
+  finalizarSesion,
   agregarSerie,
   actualizarSerie,
   eliminarSerie,
@@ -192,8 +194,11 @@ describe('useSesionStore', () => {
   })
 
   describe('finalizarSesion', () => {
-    it('éxito: actualiza BD y mueve a historial con nombres de rutina', async () => {
-      ;(obtenerBD as jest.Mock).mockResolvedValue({ runAsync: jest.fn().mockResolvedValue(undefined) })
+    it('éxito: actualiza BD vía repositorio y mueve a historial con nombres de rutina', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(finalizarSesion as jest.Mock).mockResolvedValue({
+        actualizado_en: '2026-11-03T10:00:00.000Z',
+      })
 
       const { result } = await renderHook(() => useSesionStore())
       useSesionStore.setState({
@@ -212,6 +217,11 @@ describe('useSesionStore', () => {
       })
 
       await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(finalizarSesion).toHaveBeenCalledWith(expect.anything(), 's1', {
+        duracion_minutos: 60,
+        notas: null,
+        rpe_sesion: 8,
+      })
       expect(result.current.sesionActual).toBeNull()
       expect(result.current.sesiones).toHaveLength(1)
       expect(result.current.sesiones[0].duracion_minutos).toBe(60)

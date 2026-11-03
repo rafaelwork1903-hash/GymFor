@@ -3,9 +3,9 @@
  * tabla `ejercicios`.
  */
 
-import type { SQLiteDatabase } from 'expo-sqlite'
-
 import type { Ejercicio, Equipamiento, GrupoMuscular } from '../../domain/types'
+import { aEnteroBooleano } from '../dialect'
+import type { ConexionBD } from '../port'
 
 interface EjercicioFila {
   id: string
@@ -13,7 +13,7 @@ interface EjercicioFila {
   grupo_muscular_primario: GrupoMuscular
   grupos_musculares_secundarios: string
   equipamiento: Equipamiento
-  es_compuesto: number
+  es_compuesto: number | boolean
   factor_fraccional: number
   instrucciones: string | null
   video_url: string | null
@@ -25,7 +25,7 @@ function aDominio(fila: EjercicioFila): Ejercicio {
     grupos_musculares_secundarios: JSON.parse(
       fila.grupos_musculares_secundarios || '[]',
     ) as GrupoMuscular[],
-    es_compuesto: fila.es_compuesto === 1 ? 1 : 0,
+    es_compuesto: aEnteroBooleano(fila.es_compuesto),
   }
 }
 
@@ -37,7 +37,7 @@ export interface FiltroEjercicios {
 }
 
 export async function listarEjercicios(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   filtro: FiltroEjercicios = {},
 ): Promise<Ejercicio[]> {
   const condiciones: string[] = []
@@ -65,7 +65,7 @@ export async function listarEjercicios(
 }
 
 export async function obtenerEjercicioPorId(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
 ): Promise<Ejercicio | null> {
   const fila = await db.getFirstAsync<EjercicioFila>('SELECT * FROM ejercicios WHERE id = ?', [id])
@@ -73,7 +73,7 @@ export async function obtenerEjercicioPorId(
 }
 
 /** Crea un ejercicio personalizado en el catálogo. */
-export async function crearEjercicio(db: SQLiteDatabase, ejercicio: Ejercicio): Promise<void> {
+export async function crearEjercicio(db: ConexionBD, ejercicio: Ejercicio): Promise<void> {
   await db.runAsync(
     `INSERT INTO ejercicios (
       id, nombre, grupo_muscular_primario, grupos_musculares_secundarios,

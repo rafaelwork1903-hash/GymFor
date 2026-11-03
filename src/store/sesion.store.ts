@@ -16,17 +16,8 @@ import type {
   SerieReal,
 } from '../domain/types'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
-import {
-  crearSesion,
-  agregarSerie,
-  actualizarSerie as actualizarSerieRepo,
-  eliminarSerie as eliminarSerieRepo,
-  eliminarSesion,
-  obtenerSesionDetalle,
-  listarSesionesPorUsuario,
-  type CambiosSerie,
-} from '../db/repositories/sesion.repository'
-import { obtenerRutinaDetalle, type RutinaDetalle } from '../db/repositories/rutina.repository'
+import type { CambiosSerie } from '../db/repositories/sesion.repository'
+import type { RutinaDetalle } from '../db/repositories/rutina.repository'
 import { generarId, ahoraISO } from '../utils/id'
 
 export type { CambiosSerie }
@@ -146,8 +137,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   error: null,
 
   iniciarSesion: async ({ rutinaId, diaRutinaId, usuarioId }) => {
-    await ejecutarAccion(set, async (db) => {
-      const rutinaDetalle: RutinaDetalle | null = await obtenerRutinaDetalle(db, rutinaId)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const rutinaDetalle: RutinaDetalle | null = await repos.rutinas.obtenerRutinaDetalle(rutinaId)
       if (!rutinaDetalle) {
         throw new Error(`Rutina no encontrada: ${rutinaId}`)
       }
@@ -188,7 +179,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         })),
       }
 
-      await crearSesion(db, nuevaSesion)
+      await repos.sesiones.crearSesion(nuevaSesion)
 
       return {
         sesion: {
@@ -211,8 +202,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       return
     }
 
-    await ejecutarAccion(set, async (db) => {
-      const creada = await agregarSerie(db, registroId, serie)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const creada = await repos.sesiones.agregarSerie(registroId, serie)
       return (
         creada ?? {
           ...serie,
@@ -240,7 +231,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
 
     await ejecutarAccion(
       set,
-      async (db) => actualizarSerieRepo(db, serieId, cambios),
+      async (_db, repos) => repos.sesiones.actualizarSerie(serieId, cambios),
       (seriePersistida) => {
         const actual = get().sesionActual
         if (!actual) {
@@ -274,8 +265,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
 
     await ejecutarAccion(
       set,
-      async (db) => {
-        await eliminarSerieRepo(db, serieId)
+      async (_db, repos) => {
+        await repos.sesiones.eliminarSerie(serieId)
         return serieId
       },
       () => {
@@ -308,28 +299,20 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       return
     }
 
-    await ejecutarAccion(set, async (db) => {
-      // Actualizar la sesión en BD con los datos finales
-      await db.runAsync(
-        `UPDATE sesiones
-         SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, actualizado_en = ?, sincronizado = 0
-         WHERE id = ?`,
-        [
-          params?.duracion_minutos ?? null,
-          params?.notas ?? null,
-          params?.rpe_sesion ?? null,
-          ahoraISO(),
-          sesionActual.sesion.id,
-        ],
-      )
-      return sesionActual.sesion.id
-    }, () => {
+    await ejecutarAccion(set, async (_db, repos) => {
+      const resultado = await repos.sesiones.finalizarSesion(sesionActual.sesion.id, {
+        duracion_minutos: params?.duracion_minutos ?? null,
+        notas: params?.notas ?? null,
+        rpe_sesion: params?.rpe_sesion ?? null,
+      })
+      return resultado?.actualizado_en ?? ahoraISO()
+    }, (actualizadoEn) => {
       const sesionFinalizada: SesionResumen = {
         ...sesionActual.sesion,
         duracion_minutos: params?.duracion_minutos ?? null,
         notas: params?.notas ?? null,
         rpe_sesion: params?.rpe_sesion ?? null,
-        actualizado_en: ahoraISO(),
+        actualizado_en: actualizadoEn,
         sincronizado: 0,
         rutina_nombre: sesionActual.rutina_nombre,
         nombre_dia: sesionActual.nombre_dia,
@@ -361,18 +344,18 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       set({ error: 'No hay sesión activa para descartar' })
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      await eliminarSesion(db, sesionActual.sesion.id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      await repos.sesiones.eliminarSesion(sesionActual.sesion.id)
       return sesionActual.sesion.id
     }, () => ({ sesionActual: null }))
   },
 
   cargarHistorial: async (usuarioId, rango) => {
-    await ejecutarAccion(set, async (db) => {
-      const sesiones = await listarSesionesPorUsuario(db, usuarioId, rango)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const sesiones = await repos.sesiones.listarSesionesPorUsuario(usuarioId, rango)
       const sesionesDetalle: SesionDetalle[] = []
       for (const sesion of sesiones.slice(0, LIMITE_SESIONES_DETALLE)) {
-        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        const detalle = await repos.sesiones.obtenerSesionDetalle(sesion.id)
         if (detalle) {
           sesionesDetalle.push(detalle)
         }
@@ -382,8 +365,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
   },
 
   cargarDetallesCompletos: async (usuarioId, limite = LIMITE_DETALLES_COMPLETOS) => {
-    await ejecutarAccion(set, async (db) => {
-      const sesiones = await listarSesionesPorUsuario(db, usuarioId)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const sesiones = await repos.sesiones.listarSesionesPorUsuario(usuarioId)
       const recientes = sesiones.slice(0, limite)
       const { sesionesDetalle, detallesPorId } = get()
       const detalles: SesionDetalle[] = []
@@ -395,7 +378,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           detalles.push(enCache)
           continue
         }
-        const detalle = await obtenerSesionDetalle(db, sesion.id)
+        const detalle = await repos.sesiones.obtenerSesionDetalle(sesion.id)
         if (detalle) {
           detalles.push(detalle)
         }
@@ -419,8 +402,8 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     if (yaCargado) {
       return
     }
-    await ejecutarAccion(set, async (db) => {
-      const detalle = await obtenerSesionDetalle(db, id)
+    await ejecutarAccion(set, async (_db, repos) => {
+      const detalle = await repos.sesiones.obtenerSesionDetalle(id)
       if (!detalle) {
         throw new Error(`Sesión no encontrada: ${id}`)
       }

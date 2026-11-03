@@ -2,10 +2,10 @@
  * Repositorio de usuarios. Único punto de acceso a la tabla `usuarios`.
  */
 
-import type { SQLiteDatabase } from 'expo-sqlite'
-
 import type { Nivel, Objetivo, Sexo, Usuario } from '../../domain/types'
 import { ahoraISO } from '../../utils/id'
+import { aEnteroBooleano } from '../dialect'
+import type { ConexionBD } from '../port'
 
 interface UsuarioFila {
   id: string
@@ -18,7 +18,7 @@ interface UsuarioFila {
   configuracion_entrenamiento: string
   creado_en: string
   actualizado_en: string
-  sincronizado: number
+  sincronizado: number | boolean
 }
 
 function aDominio(fila: UsuarioFila): Usuario {
@@ -28,13 +28,13 @@ function aDominio(fila: UsuarioFila): Usuario {
       string,
       unknown
     >,
-    sincronizado: fila.sincronizado === 1 ? 1 : 0,
+    sincronizado: aEnteroBooleano(fila.sincronizado),
   }
 }
 
 export type NuevoUsuario = Omit<Usuario, 'creado_en' | 'actualizado_en' | 'sincronizado'>
 
-export async function crearUsuario(db: SQLiteDatabase, usuario: NuevoUsuario): Promise<Usuario> {
+export async function crearUsuario(db: ConexionBD, usuario: NuevoUsuario): Promise<Usuario> {
   const ahora = ahoraISO()
   await db.runAsync(
     `INSERT INTO usuarios (
@@ -58,20 +58,20 @@ export async function crearUsuario(db: SQLiteDatabase, usuario: NuevoUsuario): P
 }
 
 export async function obtenerUsuarioPorId(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
 ): Promise<Usuario | null> {
   const fila = await db.getFirstAsync<UsuarioFila>('SELECT * FROM usuarios WHERE id = ?', [id])
   return fila ? aDominio(fila) : null
 }
 
-export async function listarUsuarios(db: SQLiteDatabase): Promise<Usuario[]> {
+export async function listarUsuarios(db: ConexionBD): Promise<Usuario[]> {
   const filas = await db.getAllAsync<UsuarioFila>('SELECT * FROM usuarios ORDER BY creado_en ASC')
   return filas.map(aDominio)
 }
 
 export async function actualizarUsuario(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   id: string,
   cambios: Partial<Omit<NuevoUsuario, 'id'>>,
 ): Promise<void> {
@@ -99,6 +99,6 @@ export async function actualizarUsuario(
   )
 }
 
-export async function eliminarUsuario(db: SQLiteDatabase, id: string): Promise<void> {
+export async function eliminarUsuario(db: ConexionBD, id: string): Promise<void> {
   await db.runAsync('DELETE FROM usuarios WHERE id = ?', [id])
 }

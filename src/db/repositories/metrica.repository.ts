@@ -3,10 +3,10 @@
  * tabla `metricas_progreso`.
  */
 
-import type { SQLiteDatabase } from 'expo-sqlite'
-
 import type { MetricaProgreso, Tendencia } from '../../domain/types'
 import { ahoraISO } from '../../utils/id'
+import { aEnteroBooleano } from '../dialect'
+import type { ConexionBD } from '../port'
 
 interface MetricaFila {
   id: string
@@ -19,17 +19,17 @@ interface MetricaFila {
   tendencia: Tendencia
   creado_en: string
   actualizado_en: string
-  sincronizado: number
+  sincronizado: number | boolean
 }
 
 function aDominio(fila: MetricaFila): MetricaProgreso {
-  return { ...fila, sincronizado: fila.sincronizado === 1 ? 1 : 0 }
+  return { ...fila, sincronizado: aEnteroBooleano(fila.sincronizado) }
 }
 
 export type NuevaMetrica = Omit<MetricaProgreso, 'creado_en' | 'actualizado_en' | 'sincronizado'>
 
 export async function guardarMetrica(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   metrica: NuevaMetrica,
 ): Promise<MetricaProgreso> {
   const ahora = ahoraISO()
@@ -56,7 +56,7 @@ export async function guardarMetrica(
 
 /** Historial de métricas de un ejercicio, de más reciente a más antigua. */
 export async function listarMetricasPorEjercicio(
-  db: SQLiteDatabase,
+  db: ConexionBD,
   usuarioId: string,
   ejercicioId: string,
   limite = 30,
