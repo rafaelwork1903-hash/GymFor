@@ -369,19 +369,20 @@ Docs: https://docs.expo.dev/eas/index.md
   - `android.package: "com.gymfor.app"`, `android.versionCode: 1`, `android.permissions: ["READ_MEDIA_IMAGES"]` (para Android 13+; `CAMERA` y almacenamiento ≤ API 32 ya los declara el plugin de `expo-image-picker`).
   - `ios.bundleIdentifier: "com.gymfor.app"`, `ios.buildNumber: "1"`.
   - `runtimeVersion: { "policy": "appVersion" }` para vincular compatibilidad de actualizaciones OTA a `expo.version`.
-  - Decisiones: `owner` se deja sin fijar en `app.json` para que EAS tome automáticamente la cuenta autenticada (`bunx eas-cli whoami`) al vincular el proyecto en el primer `eas build` (un `owner` distinto al usuario logueado rechaza el build; si se usa una organización, añadir `"owner": "<org>"`). `android.adaptiveIcon` actual (`android-icon-foreground/background/monochrome.png`) pasa `expo config --type introspect` sin requerir `assets/adaptive-icon.png` legacy. `expo-splash-screen` se deja fuera del MVP para no añadir dependencias nuevas.
+  - Decisiones: `owner` se deja sin fijar en `app.json` para que EAS tome automáticamente la cuenta autenticada (`bunx eas-cli whoami`) al vincular el proyecto en el primer `eas build` (un `owner` distinto al usuario logueado rechaza el build; si se usa una organización, añadir `"owner": "<org>"`). `android.adaptiveIcon` actual (`android-icon-foreground/background/monochrome.png`) pasa `expo config --type introspect` y además se genera `assets/adaptive-icon.png` (1024×1024 desde `assets/icon.png`) por compatibilidad legacy. `expo-splash-screen` se deja fuera del MVP para no añadir dependencias nuevas.
 - **Configuración `eas.json` (nuevo)**:
   - `cli`: `version: ">= 16.0.0"`, `appVersionSource: "remote"`.
   - `build.development`: `developmentClient: true`, `distribution: "internal"`.
   - `build.preview`: `distribution: "internal"`, `android.buildType: "apk"` (APK instalable directo para pruebas del MVP en dispositivo).
   - `build.production`: `autoIncrement: true`, `android.buildType: "app-bundle"` (AAB para Google Play).
   - `submit.production`: bloques `android: {}` e `ios: {}` listos para configurar credenciales al publicar en tiendas.
-- **Scripts en `package.json`** (sin nuevas dependencias):
+- **Scripts y alineación de versiones SDK 58 en `package.json`** (sin nuevas dependencias):
   - `build:preview`: `bunx eas-cli build --profile preview --platform android`.
   - `build:ios`: `bunx eas-cli build --profile preview --platform ios`.
   - `eas:doctor`: `bunx expo-doctor`.
+  - Alineación de parches de SDK 58 (`expo ~58.0.23`, `expo-constants ~58.0.15`, `expo-linking ~58.0.16`, `expo-router ~58.0.30`, `expo-sqlite ~58.0.15`, `react-native 0.88.1`, `react-native-safe-area-context ~5.11.1`, `jest-expo ~58.0.14`) y `overrides` para deduplicar `expo-constants` y `react-native-web` exigidos por `expo-doctor`.
 - **Instrucciones para compilar y probar el APK del MVP (no ejecutadas por el agente)**:
   1. `bunx eas-cli login`
   2. `bunx eas-cli build --profile preview --platform android` (o `bun run build:preview`)
   3. Descargar e instalar el APK generado en el dispositivo Android y verificar el flujo completo: `onboarding → activar rutina → entrenar → historial → progreso`.
-- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 20/20 suites y 210/210 tests ✅, `bunx expo config --type public` ✅, `JSON.parse` de `eas.json` ✅, `bunx expo export --platform web` ✅ (`bunx expo-doctor` no es ejecutable en este entorno por bloqueo de red del sandbox / `TMPDIR` de bun).
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 20/20 suites y 210/210 tests ✅, `bunx expo config --type public` ✅, `JSON.parse` de `eas.json` ✅, `bunx expo export --platform web` ✅ y `bunx expo-doctor` **20/20 checks passed** ✅.
