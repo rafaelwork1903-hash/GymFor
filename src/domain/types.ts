@@ -126,6 +126,8 @@ export interface SesionEntrenamiento extends CamposPersistidos {
   notas: string | null
   /** Esfuerzo percibido global de la sesión (1-10). */
   rpe_sesion: number | null
+  /** 0 = abierta / en curso, 1 = finalizada. */
+  finalizada: 0 | 1
 }
 
 export interface RegistroEjercicio {
@@ -189,6 +191,7 @@ export interface SesionDetalle extends SesionEntrenamiento {
 export interface SesionResumen extends SesionEntrenamiento {
   rutina_nombre: string | null
   nombre_dia: string | null
+  finalizada: 0 | 1
 }
 
 export interface RegistroEjercicioDetalle extends RegistroEjercicio {
@@ -237,7 +240,12 @@ export interface RutinaEditada {
 }
 
 export interface NuevaSesion {
-  sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
+  sesion: Omit<
+    SesionEntrenamiento,
+    'creado_en' | 'actualizado_en' | 'sincronizado' | 'finalizada'
+  > & {
+    finalizada?: 0 | 1
+  }
   registros: Array<{
     /**
      * ID del registro generado por el CALLER. El repositorio lo usa tal cual

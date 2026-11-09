@@ -1,9 +1,16 @@
-import { MIGRACIONES, migrarALaUltimaVersion, obtenerVersionActual } from '../src/db/migrations'
+import {
+  MIGRACIONES,
+  migrarALaUltimaVersion,
+  obtenerVersionActual,
+  repararVersionInconsistente,
+} from '../src/db/migrations'
 import {
   ESQUEMA_VERSION_1,
   ESQUEMA_VERSION_1_DOWN,
   ESQUEMA_VERSION_2,
   ESQUEMA_VERSION_2_DOWN,
+  ESQUEMA_VERSION_3,
+  ESQUEMA_VERSION_3_DOWN,
 } from '../src/db/schema'
 import { AdaptadorSQLite, comoBD } from './helpers/sqlite-adapter'
 
@@ -53,20 +60,50 @@ describe('migraciones', () => {
     expect(ESQUEMA_VERSION_2_DOWN).toContain('ALTER TABLE ejercicios_en_rutina DROP COLUMN imagen_url')
   })
 
-  it('migrarALaUltimaVersion actualiza de v1 a v2 de forma idempotente conservando filas previas', async () => {
+  it('la migración 3 añade y revierte finalizada en sesiones', () => {
+    expect(ESQUEMA_VERSION_3).toContain(
+      'ALTER TABLE sesiones ADD COLUMN finalizada INTEGER NOT NULL DEFAULT 0',
+    )
+    expect(ESQUEMA_VERSION_3_DOWN).toContain('ALTER TABLE sesiones DROP COLUMN finalizada')
+  })
+
+  it('migrarALaUltimaVersion actualiza de v1 a v3 de forma idempotente conservando filas previas', async () => {
     const adaptador = new AdaptadorSQLite({ versionInicial: 1 })
     const db = comoBD(adaptador)
 
     expect(await obtenerVersionActual(db)).toBe(1)
 
     const versionFinal = await migrarALaUltimaVersion(db)
-    expect(versionFinal).toBe(2)
-    expect(await obtenerVersionActual(db)).toBe(2)
+    expect(versionFinal).toBe(3)
+    expect(await obtenerVersionActual(db)).toBe(3)
 
     // Segunda ejecución idempotente
-    expect(await migrarALaUltimaVersion(db)).toBe(2)
+    expect(await migrarALaUltimaVersion(db)).toBe(3)
 
-    const columnas = adaptador.leer<{ name: string }>('PRAGMA table_info(ejercicios_en_rutina)')
-    expect(columnas.some((col) => col.name === 'imagen_url')).toBe(true)
+    const columnasEjercicios = adaptador.leer<{ name: string }>(
+      'PRAGMA table_info(ejercicios_en_rutina)',
+    )
+    expect(columnasEjercicios.some((col) => col.name === 'imagen_url')).toBe(true)
+
+    const columnasSesiones = adaptador.leer<{ name: string; dflt_value: string | null }>(
+      'PRAGMA table_info(sesiones)',
+    )
+    const colFinalizada = columnasSesiones.find((col) => col.name === 'finalizada')
+    expect(colFinalizada).toBeDefined()
+    expect(colFinalizada?.dflt_value).toBe('0')
+  })
+
+  it('repararVersionInconsistente retrocede user_version a 2 si falta la columna finalizada en v3', async () => {
+    const adaptador = new AdaptadorSQLite({ versionInicial: 2 })
+    const db = comoBD(adaptador)
+    await db.execAsync('PRAGMA user_version = 3')
+
+    await repararVersionInconsistente(db)
+    expect(await obtenerVersionActual(db)).toBe(2)
+
+    await migrarALaUltimaVersion(db)
+    expect(await obtenerVersionActual(db)).toBe(3)
+    const columnasSesiones = adaptador.leer<{ name: string }>('PRAGMA table_info(sesiones)')
+    expect(columnasSesiones.some((col) => col.name === 'finalizada')).toBe(true)
   })
 })

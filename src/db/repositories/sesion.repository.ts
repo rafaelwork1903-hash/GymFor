@@ -8,8 +8,9 @@ import { ahoraISO, generarId } from '../../utils/id'
 import { aEnteroBooleano } from '../dialect'
 import type { ConexionBD } from '../port'
 
-interface SesionFila extends Omit<SesionEntrenamiento, 'sincronizado'> {
+interface SesionFila extends Omit<SesionEntrenamiento, 'sincronizado' | 'finalizada'> {
   sincronizado: number | boolean
+  finalizada: number | boolean
   rutina_nombre: string | null
   nombre_dia: string | null
 }
@@ -42,7 +43,12 @@ export interface DatosFinalizarSesion {
 
 /** Nueva sesión completa con sus ejercicios y series ejecutadas. */
 export interface NuevaSesion {
-  sesion: Omit<SesionEntrenamiento, 'creado_en' | 'actualizado_en' | 'sincronizado'>
+  sesion: Omit<
+    SesionEntrenamiento,
+    'creado_en' | 'actualizado_en' | 'sincronizado' | 'finalizada'
+  > & {
+    finalizada?: 0 | 1
+  }
   registros: {
     /** ID generado por el caller (store): BD y sesión en curso lo comparten. */
     id: string
@@ -53,7 +59,11 @@ export interface NuevaSesion {
 }
 
 function aDominio(fila: SesionFila): SesionResumen {
-  return { ...fila, sincronizado: aEnteroBooleano(fila.sincronizado) }
+  return {
+    ...fila,
+    sincronizado: aEnteroBooleano(fila.sincronizado),
+    finalizada: aEnteroBooleano(fila.finalizada),
+  }
 }
 
 function aSerieDominio(fila: Omit<SerieReal, 'completada'> & { completada: number | boolean }): SerieReal {
@@ -83,7 +93,7 @@ export async function listarSesionesPorUsuario(
     parametros.push(rango.hasta)
   }
   const filas = await db.getAllAsync<SesionFila>(
-    `SELECT s.*, r.nombre AS rutina_nombre, dr.nombre_dia
+    `SELECT s.*, s.finalizada, r.nombre AS rutina_nombre, dr.nombre_dia
      FROM sesiones s
      LEFT JOIN dias_rutina dr ON dr.id = s.dia_rutina_id
      LEFT JOIN rutinas r ON r.id = dr.rutina_id
@@ -91,6 +101,33 @@ export async function listarSesionesPorUsuario(
     parametros,
   )
   return filas.map(aDominio)
+}
+
+/**
+ * Obtiene la sesión abierta (`finalizada = 0`) más reciente del usuario,
+ * con los nombres de rutina y día resueltos por LEFT JOIN, o `null` si no
+ * hay ninguna sesión sin finalizar.
+ */
+export async function obtenerSesionAbierta(
+  db: ConexionBD,
+  usuarioId?: string,
+): Promise<SesionResumen | null> {
+  const tieneUsuario = typeof usuarioId === 'string' && usuarioId.trim() !== ''
+  const condicion = tieneUsuario
+    ? 's.usuario_id = ? AND s.finalizada = 0'
+    : 's.finalizada = 0'
+  const parametros = tieneUsuario ? [usuarioId] : []
+  const fila = await db.getFirstAsync<SesionFila>(
+    `SELECT s.*, s.finalizada, r.nombre AS rutina_nombre, dr.nombre_dia
+     FROM sesiones s
+     LEFT JOIN dias_rutina dr ON dr.id = s.dia_rutina_id
+     LEFT JOIN rutinas r ON r.id = dr.rutina_id
+     WHERE ${condicion}
+     ORDER BY s.fecha DESC, s.creado_en DESC
+     LIMIT 1`,
+    parametros,
+  )
+  return fila ? aDominio(fila) : null
 }
 
 export async function obtenerSesionDetalle(
@@ -141,8 +178,8 @@ export async function crearSesion(db: ConexionBD, nueva: NuevaSesion): Promise<S
     await db.runAsync(
       `INSERT INTO sesiones (
         id, usuario_id, dia_rutina_id, fecha, duracion_minutos, notas,
-        rpe_sesion, creado_en, actualizado_en, sincronizado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        rpe_sesion, finalizada, creado_en, actualizado_en, sincronizado
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
       [
         nueva.sesion.id,
         nueva.sesion.usuario_id,
@@ -185,11 +222,17 @@ export async function crearSesion(db: ConexionBD, nueva: NuevaSesion): Promise<S
     }
   })
 
-  return { ...nueva.sesion, creado_en: ahora, actualizado_en: ahora, sincronizado: 0 }
+  return {
+    ...nueva.sesion,
+    finalizada: 0,
+    creado_en: ahora,
+    actualizado_en: ahora,
+    sincronizado: 0,
+  }
 }
 
 /**
- * Persiste el cierre de una sesión en curso (duración, notas y RPE global).
+ * Persiste el cierre de una sesión en curso (duración, notas, RPE global y `finalizada = 1`).
  * Centraliza la mutación en el repositorio para mantener los stores sin SQL.
  */
 export async function finalizarSesion(
@@ -200,7 +243,7 @@ export async function finalizarSesion(
   const actualizadoEn = ahoraISO()
   await db.runAsync(
     `UPDATE sesiones
-     SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, actualizado_en = ?, sincronizado = 0
+     SET duracion_minutos = ?, notas = ?, rpe_sesion = ?, finalizada = 1, actualizado_en = ?, sincronizado = 0
      WHERE id = ?`,
     [
       datos.duracion_minutos ?? null,

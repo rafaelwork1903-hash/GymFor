@@ -163,3 +163,13 @@ ALTER TABLE ejercicios_en_rutina ADD COLUMN imagen_url TEXT;
 export const ESQUEMA_VERSION_2_DOWN = `
 ALTER TABLE ejercicios_en_rutina DROP COLUMN imagen_url;
 `
+
+/** Versión 3: añade columna de estado (0 = abierta / en curso, 1 = finalizada) en sesiones. */
+export const ESQUEMA_VERSION_3 = `
+ALTER TABLE sesiones ADD COLUMN finalizada INTEGER NOT NULL DEFAULT 0;
+`
+
+/** Reversión de la migración 3. */
+export const ESQUEMA_VERSION_3_DOWN = `
+ALTER TABLE sesiones DROP COLUMN finalizada;
+`

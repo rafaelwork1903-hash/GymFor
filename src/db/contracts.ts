@@ -63,6 +63,7 @@ export interface RepositorioSesiones {
     usuarioId: string,
     rango?: { desde?: string; hasta?: string },
   ): Promise<SesionResumen[]>
+  obtenerSesionAbierta(usuarioId?: string): Promise<SesionResumen | null>
   obtenerSesionDetalle(id: string): Promise<SesionDetalle | null>
   crearSesion(nueva: NuevaSesion): Promise<SesionEntrenamiento>
   finalizarSesion(

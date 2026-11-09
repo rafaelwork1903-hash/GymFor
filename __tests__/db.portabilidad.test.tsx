@@ -155,8 +155,8 @@ describe('portabilidad y abstracción de base de datos', () => {
       expect(await obtenerVersionActual(adaptador, gestor)).toBe(0)
 
       const versionSubida = await migrarALaUltimaVersion(adaptador, gestor)
-      expect(versionSubida).toBe(2)
-      expect(await obtenerVersionActual(adaptador, gestor)).toBe(2)
+      expect(versionSubida).toBe(3)
+      expect(await obtenerVersionActual(adaptador, gestor)).toBe(3)
 
       // Ninguna sentencia emitida por el gestor de tabla usa PRAGMA user_version
       const sqlEjecutados = espiaExec.mock.calls.map(([s]) => s).join('\n')
@@ -349,6 +349,12 @@ describe('portabilidad y abstracción de base de datos', () => {
         },
         sesiones: {
           listarSesionesPorUsuario: async () => [...sesiones.values()].map((s) => s.resumen),
+          obtenerSesionAbierta: async (usuarioId) => {
+            const abiertas = [...sesiones.values()]
+              .map((s) => s.resumen)
+              .filter((r) => (!usuarioId || r.usuario_id === usuarioId) && r.finalizada === 0)
+            return abiertas[abiertas.length - 1] ?? null
+          },
           obtenerSesionDetalle: async (id) => {
             const guardada = sesiones.get(id)
             if (!guardada) return null
@@ -367,6 +373,7 @@ describe('portabilidad y abstracción de base de datos', () => {
           crearSesion: async (nueva) => {
             const resumen: SesionResumen = {
               ...nueva.sesion,
+              finalizada: 0,
               creado_en: '2026-11-03T10:00:00.000Z',
               actualizado_en: '2026-11-03T10:00:00.000Z',
               sincronizado: 0,
@@ -394,6 +401,7 @@ describe('portabilidad y abstracción de base de datos', () => {
                 duracion_minutos: datos?.duracion_minutos ?? null,
                 notas: datos?.notas ?? null,
                 rpe_sesion: datos?.rpe_sesion ?? null,
+                finalizada: 1,
                 actualizado_en: '2026-11-03T11:00:00.000Z',
               }
             }

@@ -49,6 +49,8 @@ export function crearRepositoriosSQL(db: ConexionBD): RepositoriosApp {
     sesiones: {
       listarSesionesPorUsuario: (usuarioId, rango) =>
         sesionRepoSQL.listarSesionesPorUsuario(db, usuarioId, rango),
+      obtenerSesionAbierta: (usuarioId) =>
+        sesionRepoSQL.obtenerSesionAbierta(db, usuarioId),
       obtenerSesionDetalle: (id) => sesionRepoSQL.obtenerSesionDetalle(db, id),
       crearSesion: (nueva) => sesionRepoSQL.crearSesion(db, nueva),
       finalizarSesion: (sesionId, datos) => sesionRepoSQL.finalizarSesion(db, sesionId, datos),
