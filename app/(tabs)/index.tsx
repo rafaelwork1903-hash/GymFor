@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useMemo } from 'react'
 import type { ComponentProps } from 'react'
+import { Alert, Platform } from 'react-native'
 import {
   Button,
   Card,
@@ -178,17 +179,22 @@ export default function DashboardScreen() {
   const errorRutinas = useRutinasStore((s) => s.error)
   const cargarRutinas = useRutinasStore((s) => s.cargarRutinas)
 
+  const sesionActual = useSesionStore((s) => s.sesionActual)
+  const sesionAbierta = useSesionStore((s) => s.sesionAbierta)
   const sesiones = useSesionStore((s) => s.sesiones)
   const sesionesDetalle = useSesionStore((s) => s.sesionesDetalle)
   const cargandoSesiones = useSesionStore((s) => s.cargando)
   const errorSesiones = useSesionStore((s) => s.error)
   const cargarHistorial = useSesionStore((s) => s.cargarHistorial)
+  const cargarSesionAbierta = useSesionStore((s) => s.cargarSesionAbierta)
+  const reanudarSesion = useSesionStore((s) => s.reanudarSesion)
+  const cancelarSesion = useSesionStore((s) => s.cancelarSesion)
 
   const tema = useTheme()
 
   const usuarioId = usuario?.id ?? null
 
-  // Carga inicial: rutinas del usuario (+ plantillas) e historial de sesiones.
+  // Carga inicial: rutinas del usuario (+ plantillas), historial y sesión abierta.
   useEffect(() => {
     void cargarRutinas(usuarioId)
   }, [usuarioId, cargarRutinas])
@@ -196,7 +202,8 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!usuarioId) return
     void cargarHistorial(usuarioId)
-  }, [usuarioId, cargarHistorial])
+    void cargarSesionAbierta(usuarioId)
+  }, [usuarioId, cargarHistorial, cargarSesionAbierta])
 
   const rutinaActiva = useMemo(() => rutinas.find((r) => r.activa === 1) ?? null, [rutinas])
   const ultimasSesiones = useMemo(() => sesiones.slice(0, LIMITE_SESIONES_DETALLE), [sesiones])
@@ -214,7 +221,35 @@ export default function DashboardScreen() {
     void cargarRutinas(usuarioId)
     if (usuarioId) {
       void cargarHistorial(usuarioId)
+      void cargarSesionAbierta(usuarioId)
     }
+  }
+
+  const reanudarAbierta = async () => {
+    if (!sesionAbierta) return
+    const reanudada = await reanudarSesion(sesionAbierta.id)
+    if (reanudada) {
+      router.navigate('/sesion')
+    }
+  }
+
+  const confirmarDescartarAbierta = () => {
+    if (!sesionAbierta) return
+    const mensaje = '¿Descartar la sesión sin terminar? Se borrarán sus registros y series.'
+    if (Platform.OS === 'web') {
+      if (window.confirm(mensaje)) {
+        void cancelarSesion(sesionAbierta.id)
+      }
+      return
+    }
+    Alert.alert('Descartar sesión', mensaje, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Descartar',
+        style: 'destructive',
+        onPress: () => void cancelarSesion(sesionAbierta.id),
+      },
+    ])
   }
 
   if (cargando && sinDatos) {
@@ -248,6 +283,48 @@ export default function DashboardScreen() {
               </YStack>
               <Button size="$2" borderColor="$red8" onPress={recargar}>
                 Reintentar
+              </Button>
+            </XStack>
+          </Card>
+        ) : null}
+
+        {sesionAbierta && !sesionActual ? (
+          <Card
+            size="$4"
+            backgroundColor="$blue2"
+            borderWidth={1}
+            borderColor="$blue8"
+            padding="$3"
+            gap="$2.5"
+          >
+            <Text fontSize="$3" fontWeight="600" color="$color">
+              {`Sesión sin terminar · ${sesionAbierta.rutina_nombre ?? 'Rutina'} · ${sesionAbierta.nombre_dia ?? 'Día'} · ${formatearFecha(sesionAbierta.fecha)}`}
+            </Text>
+            <XStack gap="$2">
+              <Button
+                size="$3"
+                flex={1}
+                borderWidth={1}
+                borderColor="$red8"
+                color="$red11"
+                disabled={cargandoSesiones}
+                icon={<Ionicons name="trash-outline" size={16} color={tema.red11?.val} />}
+                onPress={confirmarDescartarAbierta}
+              >
+                Descartar
+              </Button>
+              <Button
+                size="$3"
+                flex={1}
+                backgroundColor="$gray12"
+                color="$gray1"
+                fontWeight="bold"
+                pressStyle={{ opacity: 0.85 }}
+                disabled={cargandoSesiones}
+                icon={<Ionicons name="play" size={16} color={tema.gray1?.val} />}
+                onPress={() => void reanudarAbierta()}
+              >
+                Reanudar
               </Button>
             </XStack>
           </Card>

@@ -15,6 +15,7 @@ import type {
   RegistroEjercicio,
   SerieReal,
 } from '../domain/types'
+import { useConfiguracionStore } from './configuracion.store'
 import { ejecutarAccion, type EstadoCarga } from './utilidades'
 import type { CambiosSerie } from '../db/repositories/sesion.repository'
 import type { RutinaDetalle } from '../db/repositories/rutina.repository'
@@ -47,6 +48,8 @@ export const LIMITE_DETALLES_COMPLETOS = 30
 
 export interface SesionEstado extends EstadoCarga {
   sesionActual: SesionEnCurso | null
+  /** Sesión sin finalizar (`finalizada = 0`) detectada en BD al montar Dashboard o Sesión. */
+  sesionAbierta: SesionResumen | null
   /** Listado del historial con nombres de rutina/día resueltos. */
   sesiones: SesionResumen[]
   /** Detalle (registros + series) de las últimas sesiones, para métricas. */
@@ -63,6 +66,17 @@ export interface SesionEstado extends EstadoCarga {
     diaRutinaId: string
     usuarioId: string
   }) => Promise<void>
+  /**
+   * Detecta la sesión abierta más reciente (`finalizada = 0`) del usuario
+   * en BD y la guarda en `sesionAbierta`.
+   */
+  cargarSesionAbierta: (usuarioId?: string) => Promise<void>
+  /**
+   * Reconstruye `sesionActual` a partir del detalle persistido de `id` y los
+   * nombres de `sesionAbierta`, limpiando `sesionAbierta`. Devuelve `true`
+   * si la sesión se restauró o `false` si no existe.
+   */
+  reanudarSesion: (id: string) => Promise<boolean>
   agregarSerie: (
     registroId: string,
     serie: Omit<SerieReal, 'id' | 'registro_id'>,
@@ -80,10 +94,14 @@ export interface SesionEstado extends EstadoCarga {
   }) => Promise<void>
   /**
    * Descarta la sesión en curso: la elimina de la BD (con sus registros y
-   * series vía CASCADE). A diferencia de `cancelarSesion`, no deja fila huérfana.
+   * series vía CASCADE) y limpia `sesionActual`.
    */
   descartarSesion: () => Promise<void>
-  cancelarSesion: () => void
+  /**
+   * Elimina de la BD (con CASCADE) la sesión indicada, la sesión en curso o
+   * la sesión abierta pendiente y limpia el estado sin dejar filas huérfanas.
+   */
+  cancelarSesion: (id?: string) => Promise<void>
   cargarHistorial: (usuarioId: string, rango?: { desde?: string; hasta?: string }) => Promise<void>
   /**
    * Carga el detalle de hasta `limite` sesiones recientes (por defecto
@@ -132,6 +150,7 @@ function aplicarCambiosSerieLocal(actual: SerieReal, cambios: CambiosSerie): Ser
 
 export const useSesionStore = create<SesionEstado>((set, get) => ({
   sesionActual: null,
+  sesionAbierta: null,
   sesiones: [],
   sesionesDetalle: [],
   detallesCompletos: [],
@@ -170,6 +189,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           duracion_minutos: null,
           notas: null,
           rpe_sesion: null,
+          finalizada: 0,
         },
         // Los IDs de registro los genera este store y el repositorio los
         // inserta tal cual: `sesionActual.registros[].registro_id` coincide
@@ -187,6 +207,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       return {
         sesion: {
           ...nuevaSesion.sesion,
+          finalizada: 0 as const,
           creado_en: ahora,
           actualizado_en: ahora,
           sincronizado: 0 as const,
@@ -195,7 +216,74 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         rutina_nombre: rutinaDetalle.nombre,
         nombre_dia: dia.nombre_dia,
       }
-    }, (resultado) => ({ sesionActual: resultado }))
+    }, (resultado) => ({ sesionActual: resultado, sesionAbierta: null }))
+  },
+
+  cargarSesionAbierta: async (usuarioId) => {
+    const idUsuario = usuarioId ?? useConfiguracionStore.getState().usuarioActivo?.id
+    await ejecutarAccion(
+      set,
+      async (_db, repos) => repos.sesiones.obtenerSesionAbierta(idUsuario),
+      (abierta) => ({ sesionAbierta: abierta ?? null }),
+    )
+  },
+
+  reanudarSesion: async (id) => {
+    const abierta = get().sesionAbierta
+    const resultado = await ejecutarAccion(
+      set,
+      async (_db, repos) => {
+        const detalle = await repos.sesiones.obtenerSesionDetalle(id)
+        if (!detalle) {
+          return null
+        }
+        const detalleConNombres = detalle as SesionDetalle & {
+          rutina_nombre?: string | null
+          nombre_dia?: string | null
+        }
+        const rutina_nombre =
+          (abierta?.id === id ? abierta.rutina_nombre : null) ??
+          abierta?.rutina_nombre ??
+          detalleConNombres.rutina_nombre ??
+          'Rutina'
+        const nombre_dia =
+          (abierta?.id === id ? abierta.nombre_dia : null) ??
+          abierta?.nombre_dia ??
+          detalleConNombres.nombre_dia ??
+          'Día'
+        const { registros: registrosDetalle, ...camposSesion } = detalle
+        const sesionEnCurso: SesionEnCurso = {
+          sesion: {
+            id: camposSesion.id,
+            usuario_id: camposSesion.usuario_id,
+            dia_rutina_id: camposSesion.dia_rutina_id,
+            fecha: camposSesion.fecha,
+            duracion_minutos: camposSesion.duracion_minutos,
+            notas: camposSesion.notas,
+            rpe_sesion: camposSesion.rpe_sesion,
+            finalizada: camposSesion.finalizada ?? 0,
+            creado_en: camposSesion.creado_en,
+            actualizado_en: camposSesion.actualizado_en,
+            sincronizado: camposSesion.sincronizado,
+          },
+          registros: registrosDetalle.map((reg) => ({
+            registro_id: reg.id,
+            ejercicio_id: reg.ejercicio_id,
+            ejercicio_nombre: reg.ejercicio_nombre,
+            rpe_ejercicio: reg.rpe_ejercicio,
+            series: [...reg.series].sort((a, b) => a.numero_serie - b.numero_serie),
+          })),
+          rutina_nombre,
+          nombre_dia,
+        }
+        return sesionEnCurso
+      },
+      (sesionEnCurso) =>
+        sesionEnCurso
+          ? { sesionActual: sesionEnCurso, sesionAbierta: null }
+          : { sesionAbierta: null },
+    )
+    return Boolean(resultado)
   },
 
   agregarSerie: async (registroId, serie) => {
@@ -315,6 +403,7 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
         duracion_minutos: params?.duracion_minutos ?? null,
         notas: params?.notas ?? null,
         rpe_sesion: params?.rpe_sesion ?? null,
+        finalizada: 1,
         actualizado_en: actualizadoEn,
         sincronizado: 0,
         rutina_nombre: sesionActual.rutina_nombre,
@@ -333,13 +422,42 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
       }
       return {
         sesionActual: null,
-        sesiones: [sesionFinalizada, ...get().sesiones],
-        sesionesDetalle: [detalleFinalizada, ...get().sesionesDetalle].slice(0, LIMITE_SESIONES_DETALLE),
+        sesionAbierta:
+          get().sesionAbierta?.id === sesionActual.sesion.id ? null : get().sesionAbierta,
+        sesiones: [
+          sesionFinalizada,
+          ...get().sesiones.filter((s) => s.id !== sesionActual.sesion.id),
+        ],
+        sesionesDetalle: [
+          detalleFinalizada,
+          ...get().sesionesDetalle.filter((d) => d.id !== sesionActual.sesion.id),
+        ].slice(0, LIMITE_SESIONES_DETALLE),
       }
     })
   },
 
-  cancelarSesion: () => set({ sesionActual: null, error: null }),
+  cancelarSesion: async (id) => {
+    const objetivoId = id ?? get().sesionActual?.sesion.id ?? get().sesionAbierta?.id
+    if (!objetivoId) {
+      set({ sesionActual: null, sesionAbierta: null, error: null })
+      return
+    }
+    await ejecutarAccion(
+      set,
+      async (_db, repos) => {
+        await repos.sesiones.eliminarSesion(objetivoId)
+        return objetivoId
+      },
+      (idEliminado) => ({
+        sesionActual:
+          get().sesionActual?.sesion.id === idEliminado ? null : get().sesionActual,
+        sesionAbierta:
+          get().sesionAbierta?.id === idEliminado ? null : get().sesionAbierta,
+        sesiones: get().sesiones.filter((s) => s.id !== idEliminado),
+        sesionesDetalle: get().sesionesDetalle.filter((d) => d.id !== idEliminado),
+      }),
+    )
+  },
 
   descartarSesion: async () => {
     const { sesionActual } = get()
@@ -350,7 +468,13 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
     await ejecutarAccion(set, async (_db, repos) => {
       await repos.sesiones.eliminarSesion(sesionActual.sesion.id)
       return sesionActual.sesion.id
-    }, () => ({ sesionActual: null }))
+    }, (idEliminado) => ({
+      sesionActual: null,
+      sesionAbierta:
+        get().sesionAbierta?.id === idEliminado ? null : get().sesionAbierta,
+      sesiones: get().sesiones.filter((s) => s.id !== idEliminado),
+      sesionesDetalle: get().sesionesDetalle.filter((d) => d.id !== idEliminado),
+    }))
   },
 
   cargarHistorial: async (usuarioId, rango) => {

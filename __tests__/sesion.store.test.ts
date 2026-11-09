@@ -9,6 +9,7 @@ jest.mock('../src/db/repositories/sesion.repository', () => ({
   actualizarSerie: jest.fn(),
   eliminarSerie: jest.fn(),
   eliminarSesion: jest.fn(),
+  obtenerSesionAbierta: jest.fn(),
   obtenerSesionDetalle: jest.fn(),
   listarSesionesPorUsuario: jest.fn(),
 }))
@@ -28,6 +29,7 @@ import {
   actualizarSerie,
   eliminarSerie,
   eliminarSesion,
+  obtenerSesionAbierta,
   obtenerSesionDetalle,
   listarSesionesPorUsuario,
 } from '../src/db/repositories/sesion.repository'
@@ -39,6 +41,7 @@ describe('useSesionStore', () => {
     jest.clearAllMocks()
     useSesionStore.setState({
       sesionActual: null,
+      sesionAbierta: null,
       sesiones: [],
       sesionesDetalle: [],
       detallesCompletos: [],
@@ -79,6 +82,7 @@ describe('useSesionStore', () => {
     duracion_minutos: 60,
     notas: null,
     rpe_sesion: 8,
+    finalizada: 0 as const,
     creado_en: '2024-01-01T00:00:00.000Z',
     actualizado_en: '2024-01-01T00:00:00.000Z',
     sincronizado: 0 as const,
@@ -479,19 +483,137 @@ describe('useSesionStore', () => {
     })
   })
 
-  describe('cancelarSesion', () => {
-    it('limpia sesión actual y error', async () => {
+  describe('cargarSesionAbierta', () => {
+    it('éxito: obtiene la sesión abierta del repositorio y la asigna a sesionAbierta', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionAbierta as jest.Mock).mockResolvedValue(mockSesionResumen)
+
       const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarSesionAbierta('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(obtenerSesionAbierta).toHaveBeenCalledWith({}, 'u1')
+      expect(result.current.sesionAbierta).toEqual(mockSesionResumen)
+      expect(result.current.error).toBeNull()
+    })
+
+    it('sin sesión abierta: deja sesionAbierta en null', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionAbierta as jest.Mock).mockResolvedValue(null)
+      useSesionStore.setState({ sesionAbierta: mockSesionResumen })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cargarSesionAbierta('u1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(result.current.sesionAbierta).toBeNull()
+    })
+  })
+
+  describe('reanudarSesion', () => {
+    it('éxito: reconstruye sesionActual con nombres de sesionAbierta y series reales, limpia sesionAbierta y devuelve true', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue({
+        ...mockSesionBase,
+        registros: mockSesionDetalle.registros,
+      })
+      useSesionStore.setState({
+        sesionAbierta: {
+          ...mockSesionResumen,
+          rutina_nombre: 'Rutina Recuperada',
+          nombre_dia: 'Empuje Pesado',
+        },
+      })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      let exito = false
+      await act(async () => {
+        exito = await result.current.reanudarSesion('s1')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(exito).toBe(true)
+      expect(result.current.sesionAbierta).toBeNull()
+      expect(result.current.sesionActual).not.toBeNull()
+      expect(result.current.sesionActual?.rutina_nombre).toBe('Rutina Recuperada')
+      expect(result.current.sesionActual?.nombre_dia).toBe('Empuje Pesado')
+      expect(result.current.sesionActual?.registros).toEqual([
+        {
+          registro_id: 'reg1',
+          ejercicio_id: 'ej1',
+          ejercicio_nombre: 'Press banca',
+          rpe_ejercicio: null,
+          series: mockSesionDetalle.registros[0].series,
+        },
+      ])
+    })
+
+    it('devuelve false y limpia sesionAbierta si la sesión no existe en BD', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(null)
+      useSesionStore.setState({ sesionAbierta: mockSesionResumen })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      let exito = true
+      await act(async () => {
+        exito = await result.current.reanudarSesion('s-inexistente')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(exito).toBe(false)
+      expect(result.current.sesionActual).toBeNull()
+      expect(result.current.sesionAbierta).toBeNull()
+    })
+  })
+
+  describe('cancelarSesion', () => {
+    it('elimina la sesión en BD antes de limpiar sesionActual y sesionAbierta (no deja fila huérfana)', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSesion as jest.Mock).mockResolvedValue(undefined)
       useSesionStore.setState({
         sesionActual: { sesion: mockSesionBase, registros: [], rutina_nombre: 'Rutina', nombre_dia: 'Dia 1' },
+        sesionAbierta: mockSesionResumen,
         error: 'algun error',
       })
 
+      const { result } = await renderHook(() => useSesionStore())
+
       await act(async () => {
-        result.current.cancelarSesion()
+        await result.current.cancelarSesion()
       })
 
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(eliminarSesion).toHaveBeenCalledWith({}, 's1')
       expect(result.current.sesionActual).toBeNull()
+      expect(result.current.sesionAbierta).toBeNull()
+      expect(result.current.error).toBeNull()
+    })
+
+    it('elimina sesionAbierta en BD cuando se descarta desde el banner sin sesionActual', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(eliminarSesion as jest.Mock).mockResolvedValue(undefined)
+      useSesionStore.setState({
+        sesionActual: null,
+        sesionAbierta: mockSesionResumen,
+      })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      await act(async () => {
+        await result.current.cancelarSesion()
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(eliminarSesion).toHaveBeenCalledWith({}, 's1')
+      expect(result.current.sesionAbierta).toBeNull()
       expect(result.current.error).toBeNull()
     })
   })

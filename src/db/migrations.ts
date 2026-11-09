@@ -17,6 +17,8 @@ import {
   ESQUEMA_VERSION_1_DOWN,
   ESQUEMA_VERSION_2,
   ESQUEMA_VERSION_2_DOWN,
+  ESQUEMA_VERSION_3,
+  ESQUEMA_VERSION_3_DOWN,
 } from './schema'
 
 export interface Migracion {
@@ -39,6 +41,12 @@ export const MIGRACIONES: readonly Migracion[] = [
     nombre: 'imagen_ejercicio_en_rutina',
     up: ESQUEMA_VERSION_2,
     down: ESQUEMA_VERSION_2_DOWN,
+  },
+  {
+    version: 3,
+    nombre: 'estado_sesion',
+    up: ESQUEMA_VERSION_3,
+    down: ESQUEMA_VERSION_3_DOWN,
   },
 ]
 
@@ -98,6 +106,16 @@ export const gestorMetadatosSQLite: GestorMetadatosMigracion = {
       )
       if (!columnas.some((col) => col.name === 'imagen_url')) {
         await db.execAsync('PRAGMA user_version = 1')
+        return
+      }
+    }
+
+    if (version >= 3) {
+      const columnasSesiones = await db.getAllAsync<{ name: string }>(
+        'PRAGMA table_info(sesiones)',
+      )
+      if (!columnasSesiones.some((col) => col.name === 'finalizada')) {
+        await db.execAsync('PRAGMA user_version = 2')
       }
     }
   },

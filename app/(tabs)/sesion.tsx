@@ -71,6 +71,13 @@ function aRPE(texto: string): number | null | 'invalido' {
   return numero
 }
 
+/** 'YYYY-MM-DD' -> 'dd/mm/yyyy' (determinista, sin depender de Intl). */
+function formatearFecha(iso: string): string {
+  const [anio, mes, dia] = iso.split('-')
+  if (!anio || !mes || !dia) return iso
+  return `${dia}/${mes}/${anio}`
+}
+
 /** Separador de miles estilo es-ES (puntos). */
 function formatearCantidad(valor: number): string {
   return Math.round(valor)
@@ -745,14 +752,18 @@ export default function SesionScreen() {
   const seleccionarRutina = useRutinasStore((s) => s.seleccionarRutina)
 
   const sesionActual = useSesionStore((s) => s.sesionActual)
+  const sesionAbierta = useSesionStore((s) => s.sesionAbierta)
   const cargandoSesion = useSesionStore((s) => s.cargando)
   const errorSesion = useSesionStore((s) => s.error)
   const iniciarSesion = useSesionStore((s) => s.iniciarSesion)
+  const cargarSesionAbierta = useSesionStore((s) => s.cargarSesionAbierta)
+  const reanudarSesion = useSesionStore((s) => s.reanudarSesion)
   const agregarSerie = useSesionStore((s) => s.agregarSerie)
   const actualizarSerie = useSesionStore((s) => s.actualizarSerie)
   const eliminarSerie = useSesionStore((s) => s.eliminarSerie)
   const finalizarSesion = useSesionStore((s) => s.finalizarSesion)
   const descartarSesion = useSesionStore((s) => s.descartarSesion)
+  const cancelarSesion = useSesionStore((s) => s.cancelarSesion)
   const limpiarError = useSesionStore((s) => s.limpiarError)
 
   const ejerciciosPorId = useEjerciciosStore((s) => s.ejerciciosPorId)
@@ -792,6 +803,14 @@ export default function SesionScreen() {
   useEffect(() => {
     void cargarRutinas(usuarioId)
   }, [usuarioId, cargarRutinas])
+
+  // Detecta si quedó una sesión abierta sin finalizar en BD cuando no hay sesión en memoria.
+  useEffect(() => {
+    if (!usuarioId || sesionActual) {
+      return
+    }
+    void cargarSesionAbierta(usuarioId)
+  }, [usuarioId, sesionActual, cargarSesionAbierta])
 
   const rutinaActiva = useMemo(() => rutinas.find((r) => r.activa === 1) ?? null, [rutinas])
 
@@ -898,6 +917,32 @@ export default function SesionScreen() {
         text: 'Descartar',
         style: 'destructive',
         onPress: () => void descartarSesion(),
+      },
+    ])
+  }
+
+  const reanudarAbierta = async () => {
+    if (!sesionAbierta) return
+    temporizador.saltar()
+    setSesionTerminada(null)
+    await reanudarSesion(sesionAbierta.id)
+  }
+
+  const confirmarDescartarAbierta = () => {
+    if (!sesionAbierta) return
+    const mensaje = '¿Descartar la sesión sin terminar? Se borrarán sus registros y series.'
+    if (Platform.OS === 'web') {
+      if (window.confirm(mensaje)) {
+        void cancelarSesion(sesionAbierta.id)
+      }
+      return
+    }
+    Alert.alert('Descartar sesión', mensaje, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Descartar',
+        style: 'destructive',
+        onPress: () => void cancelarSesion(sesionAbierta.id),
       },
     ])
   }
@@ -1214,6 +1259,48 @@ export default function SesionScreen() {
   }
 
   // ── Sin sesión activa ────────────────────────────────────────────────────────
+  const tarjetaSesionAbierta = sesionAbierta ? (
+    <Card
+      size="$4"
+      backgroundColor="$blue2"
+      borderWidth={1}
+      borderColor="$blue8"
+      padding="$3"
+      gap="$2.5"
+    >
+      <Text fontSize="$3" fontWeight="600" color="$color">
+        {`Sesión sin terminar · ${sesionAbierta.rutina_nombre ?? 'Rutina'} · ${sesionAbierta.nombre_dia ?? 'Día'} · ${formatearFecha(sesionAbierta.fecha)}`}
+      </Text>
+      <XStack gap="$2">
+        <Button
+          size="$3"
+          flex={1}
+          borderWidth={1}
+          borderColor="$red8"
+          color="$red11"
+          disabled={cargando}
+          icon={<Ionicons name="trash-outline" size={16} color={tema.red11?.val} />}
+          onPress={confirmarDescartarAbierta}
+        >
+          Descartar
+        </Button>
+        <Button
+          size="$3"
+          flex={1}
+          backgroundColor="$gray12"
+          color="$gray1"
+          fontWeight="bold"
+          pressStyle={{ opacity: 0.85 }}
+          disabled={cargando}
+          icon={<Ionicons name="play" size={16} color={tema.gray1?.val} />}
+          onPress={() => void reanudarAbierta()}
+        >
+          Reanudar
+        </Button>
+      </XStack>
+    </Card>
+  ) : null
+
   return (
     <YStack flex={1} backgroundColor="$background">
       <YStack padding="$4" paddingBottom="$2">
@@ -1227,28 +1314,32 @@ export default function SesionScreen() {
             <Text color="$gray10">Cargando tu rutina…</Text>
           </YStack>
         ) : !rutinaActiva ? (
-          <YStack padding="$4" paddingVertical="$8" gap="$3" alignItems="center">
-            <Ionicons name="barbell-outline" size={48} color={tema.gray9?.val} />
-            <Text fontSize="$4" fontWeight="bold" color="$color" textAlign="center">
-              No hay una rutina activa
-            </Text>
-            <Text fontSize="$2" color="$gray10" textAlign="center">
-              Activa una rutina en la pestaña de Rutinas para empezar a entrenar.
-            </Text>
-            <Button
-              size="$4"
-              backgroundColor="$gray12"
-              color="$gray1"
-              fontWeight="bold"
-              pressStyle={{ opacity: 0.85 }}
-              icon={<Ionicons name="barbell-outline" size={18} color={tema.gray1?.val} />}
-              onPress={() => router.navigate('/rutinas')}
-            >
-              Ir a Rutinas
-            </Button>
+          <YStack padding="$4" gap="$4">
+            {tarjetaSesionAbierta}
+            <YStack paddingVertical="$6" gap="$3" alignItems="center">
+              <Ionicons name="barbell-outline" size={48} color={tema.gray9?.val} />
+              <Text fontSize="$4" fontWeight="bold" color="$color" textAlign="center">
+                No hay una rutina activa
+              </Text>
+              <Text fontSize="$2" color="$gray10" textAlign="center">
+                Activa una rutina en la pestaña de Rutinas para empezar a entrenar.
+              </Text>
+              <Button
+                size="$4"
+                backgroundColor="$gray12"
+                color="$gray1"
+                fontWeight="bold"
+                pressStyle={{ opacity: 0.85 }}
+                icon={<Ionicons name="barbell-outline" size={18} color={tema.gray1?.val} />}
+                onPress={() => router.navigate('/rutinas')}
+              >
+                Ir a Rutinas
+              </Button>
+            </YStack>
           </YStack>
         ) : (
           <YStack padding="$4" paddingTop="$2" gap="$3">
+            {tarjetaSesionAbierta}
             <Text fontSize="$5" fontWeight="bold" color="$color">
               {rutinaActiva.nombre}
             </Text>

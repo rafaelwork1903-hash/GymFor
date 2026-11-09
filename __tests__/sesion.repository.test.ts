@@ -4,6 +4,7 @@ import {
   eliminarSerie,
   eliminarSesion,
   finalizarSesion,
+  obtenerSesionAbierta,
   reordenarSeries,
 } from '../src/db/repositories/sesion.repository'
 import type { SerieReal } from '../src/domain/types'
@@ -65,7 +66,7 @@ describe('sesion.repository', () => {
   })
 
   describe('finalizarSesion', () => {
-    it('ejecuta UPDATE sobre sesiones con duración, notas, RPE y marca sincronizado = 0', async () => {
+    it('ejecuta UPDATE sobre sesiones con duración, notas, RPE, finalizada = 1 y marca sincronizado = 0', async () => {
       const runAsync = jest.fn().mockResolvedValue(undefined)
 
       const res = await finalizarSesion(crearBDMock({ runAsync }), 's1', {
@@ -78,9 +79,63 @@ describe('sesion.repository', () => {
       const [sql, params] = runAsync.mock.calls[0] as [string, unknown[]]
       expect(sql).toMatch(/UPDATE\s+sesiones/i)
       expect(sql).toMatch(
-        /SET\s+duracion_minutos\s*=\s*\?,\s*notas\s*=\s*\?,\s*rpe_sesion\s*=\s*\?,\s*actualizado_en\s*=\s*\?,\s*sincronizado\s*=\s*0/i,
+        /SET\s+duracion_minutos\s*=\s*\?,\s*notas\s*=\s*\?,\s*rpe_sesion\s*=\s*\?,\s*finalizada\s*=\s*1,\s*actualizado_en\s*=\s*\?,\s*sincronizado\s*=\s*0/i,
       )
       expect(params).toEqual([55, 'buen bombeo', 8, res.actualizado_en, 's1'])
+    })
+  })
+
+  describe('obtenerSesionAbierta', () => {
+    it('devuelve la sesión abierta más reciente con nombres de rutina y día e ignora finalizadas', async () => {
+      const getFirstAsync = jest.fn().mockResolvedValue({
+        id: 's-abierta',
+        usuario_id: 'u1',
+        dia_rutina_id: 'd1',
+        fecha: '2026-11-09',
+        duracion_minutos: null,
+        notas: null,
+        rpe_sesion: null,
+        finalizada: 0,
+        creado_en: '2026-11-09T10:00:00.000Z',
+        actualizado_en: '2026-11-09T10:00:00.000Z',
+        sincronizado: 0,
+        rutina_nombre: 'Fuerza 5x5',
+        nombre_dia: 'Día A',
+      })
+
+      const resultado = await obtenerSesionAbierta(crearBDMock({ getFirstAsync }), 'u1')
+
+      expect(getFirstAsync).toHaveBeenCalledTimes(1)
+      const [sql, params] = getFirstAsync.mock.calls[0] as [string, unknown[]]
+      expect(sql).toMatch(/FROM\s+sesiones\s+s/i)
+      expect(sql).toMatch(/LEFT\s+JOIN\s+dias_rutina/i)
+      expect(sql).toMatch(/LEFT\s+JOIN\s+rutinas/i)
+      expect(sql).toMatch(/s\.usuario_id\s*=\s*\?\s+AND\s+s\.finalizada\s*=\s*0/i)
+      expect(params).toEqual(['u1'])
+      expect(resultado).toEqual({
+        id: 's-abierta',
+        usuario_id: 'u1',
+        dia_rutina_id: 'd1',
+        fecha: '2026-11-09',
+        duracion_minutos: null,
+        notas: null,
+        rpe_sesion: null,
+        finalizada: 0,
+        creado_en: '2026-11-09T10:00:00.000Z',
+        actualizado_en: '2026-11-09T10:00:00.000Z',
+        sincronizado: 0,
+        rutina_nombre: 'Fuerza 5x5',
+        nombre_dia: 'Día A',
+      })
+    })
+
+    it('devuelve null cuando no existe ninguna sesión con finalizada = 0', async () => {
+      const getFirstAsync = jest.fn().mockResolvedValue(null)
+
+      const resultado = await obtenerSesionAbierta(crearBDMock({ getFirstAsync }), 'u1')
+
+      expect(resultado).toBeNull()
+      expect(getFirstAsync).toHaveBeenCalledTimes(1)
     })
   })
 

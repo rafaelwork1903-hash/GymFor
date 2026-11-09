@@ -1,13 +1,13 @@
 import { DatabaseSync } from 'node:sqlite'
 
 import type { ConexionBD, DialectoSQL, ValorParametroBD } from '../../src/db/port'
-import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2 } from '../../src/db/schema'
+import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2, ESQUEMA_VERSION_3 } from '../../src/db/schema'
 
 /**
  * Adaptador compartido de `node:sqlite` (en memoria) al puerto `ConexionBD`
  * que consumen los repositorios, migraciones y semilla.
  *
- * Se aplica el esquema REAL (`ESQUEMA_VERSION_1` + `ESQUEMA_VERSION_2`) con
+ * Se aplica el esquema REAL (`ESQUEMA_VERSION_1` + `ESQUEMA_VERSION_2` + `ESQUEMA_VERSION_3`) con
  * `PRAGMA foreign_keys = ON`, así los tests de integración validan FKs,
  * NOT NULL, UNIQUE y CASCADE de verdad.
  */
@@ -15,8 +15,8 @@ export class AdaptadorSQLite implements ConexionBD {
   readonly dialecto: DialectoSQL
   private readonly db: DatabaseSync
 
-  constructor(opciones: { versionInicial?: 0 | 1 | 2; dialecto?: DialectoSQL } = {}) {
-    const versionInicial = opciones.versionInicial ?? 2
+  constructor(opciones: { versionInicial?: 0 | 1 | 2 | 3; dialecto?: DialectoSQL } = {}) {
+    const versionInicial = opciones.versionInicial ?? 3
     this.dialecto = opciones.dialecto ?? 'sqlite'
     this.db = new DatabaseSync(':memory:')
     this.db.exec('PRAGMA foreign_keys = ON')
@@ -30,6 +30,12 @@ export class AdaptadorSQLite implements ConexionBD {
       this.db.exec(ESQUEMA_VERSION_2)
       if (this.dialecto === 'sqlite') {
         this.db.exec('PRAGMA user_version = 2')
+      }
+    }
+    if (versionInicial >= 3) {
+      this.db.exec(ESQUEMA_VERSION_3)
+      if (this.dialecto === 'sqlite') {
+        this.db.exec('PRAGMA user_version = 3')
       }
     }
   }

@@ -38,6 +38,7 @@ describe('selectores', () => {
     duracion_minutos: 60,
     notas: null,
     rpe_sesion: 8,
+    finalizada: 1 as const,
     creado_en: '2024-01-01T00:00:00.000Z',
     actualizado_en: '2024-01-01T00:00:00.000Z',
     sincronizado: 0 as const,

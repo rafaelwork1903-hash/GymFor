@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import type { ConexionBD } from '../src/db/port'
 import { obtenerSesionDetalle, reordenarSeries } from '../src/db/repositories/sesion.repository'
-import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2 } from '../src/db/schema'
+import { ESQUEMA_VERSION_1, ESQUEMA_VERSION_2, ESQUEMA_VERSION_3 } from '../src/db/schema'
 import { calcularVolumenTotal } from '../src/domain/metrics'
 import { useSesionStore } from '../src/store/sesion.store'
 
@@ -11,7 +11,7 @@ import { useSesionStore } from '../src/store/sesion.store'
  *
  * Se mockea SOLO la conexión (`src/db/client`); los repositorios y el store
  * ejecutan SQL de verdad sobre `node:sqlite` en memoria con el esquema real
- * (`ESQUEMA_VERSION_1`) y `PRAGMA foreign_keys = ON`. Así se validan los
+ * (`ESQUEMA_VERSION_1..3`) y `PRAGMA foreign_keys = ON`. Así se validan los
  * FK, NOT NULL y CASCADE que los tests unitarios (con repos mockeados) no
  * detectan.
  */
@@ -31,6 +31,7 @@ class AdaptadorSQLite {
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec(ESQUEMA_VERSION_1)
     this.db.exec(ESQUEMA_VERSION_2)
+    this.db.exec(ESQUEMA_VERSION_3)
   }
 
   async runAsync(sql: string, params: unknown[] = []): Promise<unknown> {
@@ -127,6 +128,7 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
     ;(obtenerBD as jest.Mock).mockResolvedValue(adaptador as unknown as ConexionBD)
     useSesionStore.setState({
       sesionActual: null,
+      sesionAbierta: null,
       sesiones: [],
       sesionesDetalle: [],
       detallesCompletos: [],
@@ -543,6 +545,105 @@ describe('integración sesion.store ↔ sesion.repository ↔ SQLite', () => {
         { id: s1.id, numero_serie: 1 },
         { id: s4.id, numero_serie: 2 },
       ])
+    })
+  })
+
+  describe('recuperación de sesiones abiertas y cancelarSesion sin huérfanas (issue #37)', () => {
+    it('crear → simular cierre → cargarSesionAbierta la detecta → reanudarSesion restaura registros/series → añadir serie persiste → finalizar marca finalizada = 1 y desaparece de abiertas', async () => {
+      const { iniciarSesion, agregarSerie } = useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+
+      const sesionCreada = useSesionStore.getState().sesionActual!
+      const sesionId = sesionCreada.sesion.id
+      const registroId = sesionCreada.registros[0].registro_id
+
+      await agregarSerie(registroId, { ...nuevaSerie(1), peso_levantado: 60, reps_realizadas: 10 })
+
+      // En BD la sesión nace con finalizada = 0
+      const filaInicial = adaptador.leer<{ finalizada: number }>(
+        'SELECT finalizada FROM sesiones WHERE id = ?',
+        [sesionId],
+      )[0]
+      expect(filaInicial.finalizada).toBe(0)
+
+      // Simular cierre/reinicio de la app (estado en memoria vacío)
+      useSesionStore.setState({ sesionActual: null, sesionAbierta: null })
+      expect(useSesionStore.getState().sesionActual).toBeNull()
+
+      // Al arrancar, cargarSesionAbierta detecta la sesión sin terminar con nombres de rutina y día
+      await useSesionStore.getState().cargarSesionAbierta('u1')
+      const abierta = useSesionStore.getState().sesionAbierta
+      expect(abierta).not.toBeNull()
+      expect(abierta?.id).toBe(sesionId)
+      expect(abierta?.finalizada).toBe(0)
+      expect(abierta?.rutina_nombre).toBe('Rutina Test')
+      expect(abierta?.nombre_dia).toBe('Día 1')
+
+      // Reanudar restaura sesionActual (registros + series reales) y limpia sesionAbierta
+      const reanudada = await useSesionStore.getState().reanudarSesion(sesionId)
+      expect(reanudada).toBe(true)
+
+      const trasReanudar = useSesionStore.getState()
+      expect(trasReanudar.sesionAbierta).toBeNull()
+      expect(trasReanudar.sesionActual).not.toBeNull()
+      expect(trasReanudar.sesionActual?.sesion.id).toBe(sesionId)
+      expect(trasReanudar.sesionActual?.rutina_nombre).toBe('Rutina Test')
+      expect(trasReanudar.sesionActual?.nombre_dia).toBe('Día 1')
+      expect(trasReanudar.sesionActual?.registros).toHaveLength(1)
+      expect(trasReanudar.sesionActual?.registros[0].registro_id).toBe(registroId)
+      expect(trasReanudar.sesionActual?.registros[0].series).toHaveLength(1)
+      expect(trasReanudar.sesionActual?.registros[0].series[0].peso_levantado).toBe(60)
+
+      // Añadir una nueva serie sobre la sesión reanudada persiste en SQLite
+      await useSesionStore
+        .getState()
+        .agregarSerie(registroId, { ...nuevaSerie(2), peso_levantado: 65, reps_realizadas: 8 })
+      expect(useSesionStore.getState().sesionActual?.registros[0].series).toHaveLength(2)
+
+      const seriesBD = adaptador.leer<{ numero_serie: number; peso_levantado: number }>(
+        'SELECT numero_serie, peso_levantado FROM series WHERE registro_id = ? ORDER BY numero_serie',
+        [registroId],
+      )
+      expect(seriesBD).toEqual([
+        { numero_serie: 1, peso_levantado: 60 },
+        { numero_serie: 2, peso_levantado: 65 },
+      ])
+
+      // Finalizar marca finalizada = 1 en BD y en el resumen local, y desaparece de sesiones abiertas
+      await useSesionStore
+        .getState()
+        .finalizarSesion({ duracion_minutos: 45, notas: 'recuperada', rpe_sesion: 8 })
+
+      const trasFinalizar = useSesionStore.getState()
+      expect(trasFinalizar.sesionActual).toBeNull()
+      expect(trasFinalizar.sesiones[0].finalizada).toBe(1)
+
+      const filaFinal = adaptador.leer<{ finalizada: number; duracion_minutos: number }>(
+        'SELECT finalizada, duracion_minutos FROM sesiones WHERE id = ?',
+        [sesionId],
+      )[0]
+      expect(filaFinal).toEqual({ finalizada: 1, duracion_minutos: 45 })
+
+      await useSesionStore.getState().cargarSesionAbierta('u1')
+      expect(useSesionStore.getState().sesionAbierta).toBeNull()
+    })
+
+    it('cancelarSesion borra la sesión, registros y series en SQLite (sin filas huérfanas)', async () => {
+      const { iniciarSesion, agregarSerie, cancelarSesion } = useSesionStore.getState()
+      await iniciarSesion({ rutinaId: 'r1', diaRutinaId: 'd1', usuarioId: 'u1' })
+      const sesionId = useSesionStore.getState().sesionActual!.sesion.id
+      const registroId = useSesionStore.getState().sesionActual!.registros[0].registro_id
+      await agregarSerie(registroId, nuevaSerie(1))
+
+      await cancelarSesion()
+
+      const estado = useSesionStore.getState()
+      expect(estado.error).toBeNull()
+      expect(estado.sesionActual).toBeNull()
+      expect(estado.sesionAbierta).toBeNull()
+      expect(adaptador.leer('SELECT * FROM sesiones WHERE id = ?', [sesionId])).toHaveLength(0)
+      expect(adaptador.leer('SELECT * FROM registros_ejercicio')).toHaveLength(0)
+      expect(adaptador.leer('SELECT * FROM series')).toHaveLength(0)
     })
   })
 })
