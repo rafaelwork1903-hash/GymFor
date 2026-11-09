@@ -555,6 +555,36 @@ describe('useSesionStore', () => {
       ])
     })
 
+    it('no reutiliza los nombres de sesionAbierta si su id no coincide con la sesión reanudada', async () => {
+      ;(obtenerBD as jest.Mock).mockResolvedValue({})
+      ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue({
+        ...mockSesionBase,
+        id: 's-otra',
+        registros: mockSesionDetalle.registros,
+      })
+      useSesionStore.setState({
+        sesionAbierta: {
+          ...mockSesionResumen,
+          id: 's1',
+          rutina_nombre: 'Rutina de Otra Sesión',
+          nombre_dia: 'Día de Otra Sesión',
+        },
+      })
+
+      const { result } = await renderHook(() => useSesionStore())
+
+      let exito = false
+      await act(async () => {
+        exito = await result.current.reanudarSesion('s-otra')
+      })
+
+      await waitFor(() => expect(result.current.cargando).toBe(false))
+      expect(exito).toBe(true)
+      expect(result.current.sesionActual?.sesion.id).toBe('s-otra')
+      expect(result.current.sesionActual?.rutina_nombre).toBe('Rutina')
+      expect(result.current.sesionActual?.nombre_dia).toBe('Día')
+    })
+
     it('devuelve false y limpia sesionAbierta si la sesión no existe en BD', async () => {
       ;(obtenerBD as jest.Mock).mockResolvedValue({})
       ;(obtenerSesionDetalle as jest.Mock).mockResolvedValue(null)

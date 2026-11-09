@@ -356,9 +356,9 @@ Docs: https://docs.expo.dev/eas/index.md
   - Resuelto el gap de `cancelarSesion`: ahora es `async`, elimina la sesión en BD (`repos.sesiones.eliminarSesion`, con `CASCADE` a registros y series) antes de limpiar `sesionActual`/`sesionAbierta`, sin dejar filas huérfanas. `finalizarSesion` incluye `finalizada: 1` en el resumen local.
 - **UI (`app/(tabs)/index.tsx`, `app/(tabs)/sesion.tsx`)**:
   - Dashboard y Sesión llaman `cargarSesionAbierta` al montar y muestran un banner/tarjeta cuando existe `sesionAbierta` y no hay `sesionActual`: `Sesión sin terminar · {rutina_nombre} · {nombre_dia} · {fecha}` con botones **Reanudar** (reconstruye `sesionActual` con cronómetro continuo desde `creado_en` y navega a `/sesion` desde Dashboard) y **Descartar** (confirmación multiplataforma → `cancelarSesion`).
-- **Tests** (+11 tests nuevos, suite completa en 20/20 suites y 209/209 tests):
+- **Tests** (+12 tests nuevos, suite completa en 20/20 suites y 210/210 tests):
   - `__tests__/migrations.test.ts`: migración real idempotente `v1 → v3`, existencia de columna `finalizada` y autorreparación de `user_version = 3`.
   - `__tests__/sesion.repository.test.ts`: `obtenerSesionAbierta` (con nombres, `null` si no hay abiertas, filtro `finalizada = 0`) y `finalizarSesion` (`SET finalizada = 1`).
-  - `__tests__/sesion.store.test.ts`: `cargarSesionAbierta`, `reanudarSesion` (`true` y reconstrucción, `false` si no existe) y `cancelarSesion` async borrando en BD.
+  - `__tests__/sesion.store.test.ts`: `cargarSesionAbierta`, `reanudarSesion` (`true` y reconstrucción, no reutiliza nombres si `sesionAbierta.id !== id`, `false` si no existe) y `cancelarSesion` async borrando en BD.
   - `__tests__/integracion.sesion.test.ts`: flujo real sobre SQLite (`crear → simular cierre → cargarSesionAbierta → reanudarSesion → agregarSerie → finalizarSesion` marcando `finalizada = 1` y desapareciendo de abiertas + `cancelarSesion` sin filas huérfanas).
-- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings en archivos nuevos), `bun run test` 20/20 suites y 209/209 tests ✅.
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings en archivos nuevos), `bun run test` 20/20 suites y 210/210 tests ✅.

@@ -241,14 +241,13 @@ export const useSesionStore = create<SesionEstado>((set, get) => ({
           rutina_nombre?: string | null
           nombre_dia?: string | null
         }
+        const abiertaCoincidente = abierta?.id === id ? abierta : null
         const rutina_nombre =
-          (abierta?.id === id ? abierta.rutina_nombre : null) ??
-          abierta?.rutina_nombre ??
+          abiertaCoincidente?.rutina_nombre ??
           detalleConNombres.rutina_nombre ??
           'Rutina'
         const nombre_dia =
-          (abierta?.id === id ? abierta.nombre_dia : null) ??
-          abierta?.nombre_dia ??
+          abiertaCoincidente?.nombre_dia ??
           detalleConNombres.nombre_dia ??
           'Día'
         const { registros: registrosDetalle, ...camposSesion } = detalle
