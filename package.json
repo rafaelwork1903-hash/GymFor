@@ -48,7 +48,10 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "build:preview": "bunx eas-cli build --profile preview --platform android",
+    "build:ios": "bunx eas-cli build --profile preview --platform ios",
+    "eas:doctor": "bunx expo-doctor"
   },
   "jest": {
     "preset": "jest-expo",

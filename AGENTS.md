@@ -362,3 +362,26 @@ Docs: https://docs.expo.dev/eas/index.md
   - `__tests__/sesion.store.test.ts`: `cargarSesionAbierta`, `reanudarSesion` (`true` y reconstrucción, no reutiliza nombres si `sesionAbierta.id !== id`, `false` si no existe) y `cancelarSesion` async borrando en BD.
   - `__tests__/integracion.sesion.test.ts`: flujo real sobre SQLite (`crear → simular cierre → cargarSesionAbierta → reanudarSesion → agregarSerie → finalizarSesion` marcando `finalizada = 1` y desapareciendo de abiertas + `cancelarSesion` sin filas huérfanas).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (0 warnings en archivos nuevos), `bun run test` 20/20 suites y 210/210 tests ✅.
+
+### 2026-11-09 — chore/distribucion-eas (issue #39)
+
+- **Identificadores y metadatos en `app.json`**:
+  - `android.package: "com.gymfor.app"`, `android.versionCode: 1`, `android.permissions: ["READ_MEDIA_IMAGES"]` (para Android 13+; `CAMERA` y almacenamiento ≤ API 32 ya los declara el plugin de `expo-image-picker`).
+  - `ios.bundleIdentifier: "com.gymfor.app"`, `ios.buildNumber: "1"`.
+  - `runtimeVersion: { "policy": "appVersion" }` para vincular compatibilidad de actualizaciones OTA a `expo.version`.
+  - Decisiones: `owner` se deja sin fijar en `app.json` para que EAS tome automáticamente la cuenta autenticada (`bunx eas-cli whoami`) al vincular el proyecto en el primer `eas build` (un `owner` distinto al usuario logueado rechaza el build; si se usa una organización, añadir `"owner": "<org>"`). `android.adaptiveIcon` actual (`android-icon-foreground/background/monochrome.png`) pasa `expo config --type introspect` sin requerir `assets/adaptive-icon.png` legacy. `expo-splash-screen` se deja fuera del MVP para no añadir dependencias nuevas.
+- **Configuración `eas.json` (nuevo)**:
+  - `cli`: `version: ">= 16.0.0"`, `appVersionSource: "remote"`.
+  - `build.development`: `developmentClient: true`, `distribution: "internal"`.
+  - `build.preview`: `distribution: "internal"`, `android.buildType: "apk"` (APK instalable directo para pruebas del MVP en dispositivo).
+  - `build.production`: `autoIncrement: true`, `android.buildType: "app-bundle"` (AAB para Google Play).
+  - `submit.production`: bloques `android: {}` e `ios: {}` listos para configurar credenciales al publicar en tiendas.
+- **Scripts en `package.json`** (sin nuevas dependencias):
+  - `build:preview`: `bunx eas-cli build --profile preview --platform android`.
+  - `build:ios`: `bunx eas-cli build --profile preview --platform ios`.
+  - `eas:doctor`: `bunx expo-doctor`.
+- **Instrucciones para compilar y probar el APK del MVP (no ejecutadas por el agente)**:
+  1. `bunx eas-cli login`
+  2. `bunx eas-cli build --profile preview --platform android` (o `bun run build:preview`)
+  3. Descargar e instalar el APK generado en el dispositivo Android y verificar el flujo completo: `onboarding → activar rutina → entrenar → historial → progreso`.
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 20/20 suites y 210/210 tests ✅, `bunx expo config --type public` ✅, `JSON.parse` de `eas.json` ✅, `bunx expo export --platform web` ✅ (`bunx expo-doctor` no es ejecutable en este entorno por bloqueo de red del sandbox / `TMPDIR` de bun).
