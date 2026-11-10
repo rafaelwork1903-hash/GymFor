@@ -24,6 +24,7 @@ import {
 } from '../../domain/types'
 import type { DatosPerfil } from '../../store/configuracion.store'
 import { validarFormularioPerfil, type BorradorPerfil, type ErroresPerfil } from '../../utils/perfil'
+import { CampoFechaNacimiento } from './CampoFechaNacimiento'
 
 /** Etiquetas legibles para `Objetivo`. */
 export const ETIQUETAS_OBJETIVO: Record<Objetivo, string> = {
@@ -255,22 +256,15 @@ export function FormularioPerfil({
                 <Label fontSize="$2" color="$gray11">
                   Fecha de nacimiento (opcional)
                 </Label>
-                <Input
-                  value={fechaNacimiento}
-                  onChangeText={setFechaNacimiento}
+                <CampoFechaNacimiento
+                  valor={fechaNacimiento}
+                  onChange={(nuevaFecha) => {
+                    setFechaNacimiento(nuevaFecha)
+                    marcarTocado('fecha_nacimiento')
+                  }}
                   onBlur={() => marcarTocado('fecha_nacimiento')}
-                  placeholder="AAAA-MM-DD (ej. 1996-05-14)"
-                  placeholderTextColor={tema.placeholderColor?.val}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  maxLength={10}
-                  borderRadius="$3"
-                  padding="$2.5"
-                  disabled={guardando}
-                  borderWidth={errorFecha ? 2 : 1}
-                  borderColor={errorFecha ? '$red8' : '$borderColor'}
-                  accessibilityLabel="Fecha de nacimiento en formato AAAA-MM-DD"
-                  aria-label="Fecha de nacimiento en formato AAAA-MM-DD"
+                  deshabilitado={guardando}
+                  error={errorFecha}
                 />
                 {errorFecha ? (
                   <Text fontSize="$2" color="$red11">
@@ -278,7 +272,7 @@ export function FormularioPerfil({
                   </Text>
                 ) : (
                   <Text fontSize="$1" color="$gray10">
-                    Formato AAAA-MM-DD, no posterior a hoy.
+                    Selecciona tu fecha en el calendario (no posterior a hoy).
                   </Text>
                 )}
               </YStack>
