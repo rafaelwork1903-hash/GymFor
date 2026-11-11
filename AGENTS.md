@@ -417,3 +417,19 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Pendiente**: probar en dispositivo/emulador Android con barra de 3 botones (requiere development build: `expo-navigation-bar` es nativo y no basta Expo Go).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅ (plugin `expo-navigation-bar` presente).
 
+### 2026-11-11 — feat/brand-icon-splash
+
+- **Iconos (`assets/`)**: se sustituyen los placeholders por un emblema generado por código: una «G» en degradado cian→azul (`#38BDF8` → `#2563EB`) sobre `#0F172A`, cuyo travesaño termina en un disco de pesas. Formas grandes, sin detalles finos, para que se lea a 48 px. **Es una propuesta del agente, no arte oficial de un diseñador**: si llega un logo definitivo, basta con reemplazar los PNG o ajustar el script.
+  - `icon.png` y `adaptive-icon.png`: 1024×1024 RGB sin alfa.
+  - `android-icon-foreground.png`: 1024×1024 RGBA; emblema de 540 px de diámetro, dentro de la zona segura del 66% (682 px).
+  - `android-icon-background.png`: 1024×1024 RGB sólido `#0F172A` (igual que `adaptiveIcon.backgroundColor`).
+  - `android-icon-monochrome.png`: 1024×1024 RGBA, silueta blanca plana (Themed Icons, Android 13+).
+  - `splash-icon.png`: 1024×1024 RGBA, solo el emblema y sin texto. Android 12+ recorta el icono de la splash en un círculo, así que el emblema queda dentro del 66% central.
+  - `favicon.png`: 48×48 reducido desde `icon.png` (Lanczos).
+- **Splash (`app.json`)**: en SDK 58 la clave `splash` en la raíz ya no existe en `ExpoConfig` (solo queda `web.splash`, para PWA) y se ignora en nativo. Se instala `expo-splash-screen` (`~58.0.14`, lo instaló el usuario con `bunx expo install`) y se configura como plugin: `image`, `imageWidth: 200`, `resizeMode: "contain"`, `backgroundColor: "#0F172A"` y una variante `dark` igual. `adaptiveIcon.backgroundColor` pasa de `#E6F4FE` a `#0F172A`.
+- **Script reproducible**: `scripts/generate_brand_assets.py` (pycairo + Pillow) dibuja el emblema en vectorial y guarda los PNG con compresión sin pérdida (`optimize=True`, `compress_level=9`).
+- **Peso**: los PNG fuente bajan de unos 905 KB a unos 136 KB. Ojo: Expo genera los mipmaps nativos a partir de estos archivos, así que **el tamaño del APK instalado casi no cambia**. Esto no resuelve el problema de almacenamiento de la app.
+- **Pendiente**: ver el icono y la splash en un dispositivo real (necesita un build nuevo; Expo Go no usa estos assets).
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type prebuild` ✅ (el plugin `expo-splash-screen` resuelve y aparece en `pluginHistory`), `bunx expo export --platform web` ✅.
+
+
