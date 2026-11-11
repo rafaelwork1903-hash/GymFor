@@ -386,3 +386,16 @@ Docs: https://docs.expo.dev/eas/index.md
   2. `bunx eas-cli build --profile preview --platform android` (o `bun run build:preview`)
   3. Descargar e instalar el APK generado en el dispositivo Android y verificar el flujo completo: `onboarding → activar rutina → entrenar → historial → progreso`.
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅, `bun run test` 20/20 suites y 210/210 tests ✅, `bunx expo config --type public` ✅, `JSON.parse` de `eas.json` ✅, `bunx expo export --platform web` ✅ y `bunx expo-doctor` **20/20 checks passed** ✅.
+
+### 2026-11-10 — feat/perfil-datepicker (issue #3)
+
+- **Utilidades puras de fecha (`src/utils/perfil.ts`)**:
+  - `MESES_ANIO`, `DIAS_SEMANA_ABREV`, `obtenerDiasDelMes(anio, mes)` (con soporte de bisiestos), `obtenerPrimerDiaSemana(anio, mes)` (lunes = 0), `construirFechaISO(anio, mes, dia)`, `desglosarFechaISO(fechaISO, defectoAnio)` y `formatearFechaLegible(fechaISO)` (`14 de mayo de 1996`).
+- **Componente selector de fecha modal (`src/components/usuarios/CampoFechaNacimiento.tsx`)**:
+  - Control tipo input activable con icono de calendario, fecha legible/ISO y botón de borrado rápido.
+  - Modal accesible con selección por Día (cuadrícula mensual de 7 columnas), Mes (selector rápido de 12 meses) y Año (lista scrollable desde el año actual hasta 1920), deshabilitando fechas futuras (`> hoyISO`) sin dependencias nativas nuevas (cero aumento de tamaño en el APK y compatible con Android, iOS y Web).
+  - Acciones: `Cancelar`, `Limpiar` y `Aceptar`.
+- **Formulario de perfil (`src/components/usuarios/FormularioPerfil.tsx`)**:
+  - Reemplazo del `Input` manual de texto por `CampoFechaNacimiento`, manteniendo la validación reactiva de `validarFormularioPerfil` y la persistencia en formato `AAAA-MM-DD`.
+- **Tests (`__tests__/perfil.test.ts`)**:
+  - +5 pruebas unitarias para `obtenerDiasDelMes`, `obtenerPrimerDiaSemana`, `construirFechaISO`, `desglosarFechaISO` y `formatearFechaLegible`. Suite completa en verde.

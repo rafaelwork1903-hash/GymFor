@@ -1,5 +1,10 @@
 import {
+  construirFechaISO,
+  desglosarFechaISO,
   fechaLocalISO,
+  formatearFechaLegible,
+  obtenerDiasDelMes,
+  obtenerPrimerDiaSemana,
   validarFechaNacimiento,
   validarFormularioPerfil,
   validarPesoInicial,
@@ -107,6 +112,42 @@ describe('validación pura del formulario de perfil (src/utils/perfil.ts)', () =
         },
         errores: {},
       })
+    })
+  })
+
+  describe('utilidades de calendario para selector de fecha', () => {
+    it('obtenerDiasDelMes calcula correctamente días en meses regulares y bisiestos', () => {
+      expect(obtenerDiasDelMes(2024, 2)).toBe(29) // bisiesto
+      expect(obtenerDiasDelMes(2025, 2)).toBe(28)
+      expect(obtenerDiasDelMes(2025, 4)).toBe(30)
+      expect(obtenerDiasDelMes(2025, 12)).toBe(31)
+    })
+
+    it('obtenerPrimerDiaSemana devuelve índice con lunes=0 y domingo=6', () => {
+      // 1 de febrero de 2024 fue jueves (índice 3: Lu=0, Ma=1, Mi=2, Ju=3)
+      expect(obtenerPrimerDiaSemana(2024, 2)).toBe(3)
+      // 1 de marzo de 2026 es domingo (índice 6)
+      expect(obtenerPrimerDiaSemana(2026, 3)).toBe(6)
+      // 1 de junio de 2026 es lunes (índice 0)
+      expect(obtenerPrimerDiaSemana(2026, 6)).toBe(0)
+    })
+
+    it('construirFechaISO formatea componentes numéricos con ceros a la izquierda', () => {
+      expect(construirFechaISO(1996, 5, 4)).toBe('1996-05-04')
+      expect(construirFechaISO(2001, 12, 25)).toBe('2001-12-25')
+    })
+
+    it('desglosarFechaISO extrae año, mes y día de una fecha válida o retorna valores por defecto', () => {
+      expect(desglosarFechaISO('1996-05-04')).toEqual({ anio: 1996, mes: 5, dia: 4 })
+      expect(desglosarFechaISO('', 1995)).toEqual({ anio: 1995, mes: 1, dia: 1 })
+      expect(desglosarFechaISO('invalido', 2000)).toEqual({ anio: 2000, mes: 1, dia: 1 })
+    })
+
+    it('formatearFechaLegible devuelve texto descriptivo en español o vacío si no es válida', () => {
+      expect(formatearFechaLegible('1996-05-14')).toBe('14 de mayo de 1996')
+      expect(formatearFechaLegible('2000-01-01')).toBe('1 de enero de 2000')
+      expect(formatearFechaLegible('')).toBe('')
+      expect(formatearFechaLegible('no-es-fecha')).toBe('')
     })
   })
 })

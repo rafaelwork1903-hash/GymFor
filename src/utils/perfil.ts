@@ -48,6 +48,100 @@ export type ResultadoValidacionPerfil =
 
 const ANIO_MINIMO_NACIMIENTO = 1900
 
+/** Nombres en español de los 12 meses del año en minúsculas/capitalizados. */
+export const MESES_ANIO = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+] as const
+
+/** Nombres abreviados de los días de la semana (iniciando en lunes). */
+export const DIAS_SEMANA_ABREV = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'] as const
+
+/**
+ * Devuelve el total de días que tiene un mes para un año determinado (1..31),
+ * considerando años bisiestos. `mes` va de 1 a 12.
+ */
+export function obtenerDiasDelMes(anio: number, mes: number): number {
+  return new Date(anio, mes, 0).getDate()
+}
+
+/**
+ * Devuelve el índice del primer día de la semana para un mes y año dados,
+ * donde Lunes = 0, Martes = 1, ..., Domingo = 6. `mes` va de 1 a 12.
+ */
+export function obtenerPrimerDiaSemana(anio: number, mes: number): number {
+  const diaSemanaJS = new Date(anio, mes - 1, 1).getDay() // 0 = Domingo, 1 = Lunes, ...
+  return (diaSemanaJS + 6) % 7
+}
+
+/**
+ * Construye una cadena en formato `AAAA-MM-DD` a partir de sus componentes numéricos.
+ */
+export function construirFechaISO(anio: number, mes: number, dia: number): string {
+  const a = String(anio).padStart(4, '0')
+  const m = String(mes).padStart(2, '0')
+  const d = String(dia).padStart(2, '0')
+  return `${a}-${m}-${d}`
+}
+
+/**
+ * Desglosa una cadena `AAAA-MM-DD` en sus componentes numéricos `{ anio, mes, dia }`.
+ * Si la cadena no es válida o está vacía, devuelve valores por defecto seguros.
+ */
+export function desglosarFechaISO(
+  fechaISO: string,
+  defectoAnio: number = 2000,
+): { anio: number; mes: number; dia: number } {
+  const partes = fechaISO.trim().split('-')
+  if (partes.length === 3) {
+    const anio = Number(partes[0])
+    const mes = Number(partes[1])
+    const dia = Number(partes[2])
+    if (
+      Number.isInteger(anio) &&
+      Number.isInteger(mes) &&
+      Number.isInteger(dia) &&
+      mes >= 1 &&
+      mes <= 12 &&
+      dia >= 1 &&
+      dia <= 31
+    ) {
+      return { anio, mes, dia }
+    }
+  }
+  return { anio: defectoAnio, mes: 1, dia: 1 }
+}
+
+/**
+ * Formatea una fecha `AAAA-MM-DD` a texto legible en español (ej. `14 de mayo de 1996`).
+ * Si la fecha está vacía o es inválida, retorna una cadena vacía.
+ */
+export function formatearFechaLegible(fechaISO: string): string {
+  const limpio = fechaISO.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(limpio)) {
+    return ''
+  }
+  const [anioTxt, mesTxt, diaTxt] = limpio.split('-')
+  const anio = Number(anioTxt)
+  const mes = Number(mesTxt)
+  const dia = Number(diaTxt)
+  if (mes < 1 || mes > 12) {
+    return ''
+  }
+  const nombreMes = MESES_ANIO[mes - 1]
+  return `${dia} de ${nombreMes.toLowerCase()} de ${anio}`
+}
+
 /**
  * Formatea una instancia `Date` como fecha local `AAAA-MM-DD`.
  */
