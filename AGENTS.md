@@ -417,3 +417,23 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Pendiente**: probar en dispositivo/emulador Android con barra de 3 botones (requiere development build: `expo-navigation-bar` es nativo y no basta Expo Go).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅ (plugin `expo-navigation-bar` presente).
 
+### 2026-11-11 — feat/brand-icon-splash
+
+- **Identidad de marca y diseño de iconos (`assets/`)**:
+  - Reemplazo integral de assets provisionales y figuras geométricas por el arte y monograma definitivo de GymFor: 'G' atlética integrada con barra y discos olímpicos en degradado cian/azul eléctrico (`#38BDF8` a `#2563EB`) sobre fondo pizarra oscura (`#0F172A`).
+  - `icon.png`: 1024×1024 px cuadrado, modo RGB sin canal alfa (requerido para iOS App Store y Expo).
+  - `adaptive-icon.png`: 1024×1024 px modo RGB idéntico para compatibilidad Android legacy.
+  - `android-icon-foreground.png`: 1024×1024 px RGBA con canal alfa, con el emblema (diámetro ~560 px) contenido holgadamente dentro de la zona segura central de 66% (diámetro 682 px) según directrices de Material Design.
+  - `android-icon-background.png`: 1024×1024 px modo RGB con color sólido `#0F172A` alineado con `adaptiveIcon.backgroundColor`.
+  - `android-icon-monochrome.png`: 1024×1024 px RGBA, silueta plana blanca sobre fondo transparente para iconos con tema dinámico (Themed Icons) en Android 13+.
+  - `splash-icon.png`: 1024×1024 px RGBA, emblema GymFor y tipografía `G Y M F O R` con espaciado tracking centrado para la pantalla de inicio.
+  - `favicon.png`: 48×48 px modo RGB con renderizado nítido optimizado para navegación web.
+- **Configuración en `app.json`**:
+  - Añadido el bloque oficial `"splash"`: `{ "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#0F172A" }`.
+  - Sincronizado `android.adaptiveIcon.backgroundColor: "#0F172A"`.
+- **Optimización y reducción de peso**:
+  - Script determinista `scripts/generate_brand_assets.py` con renderizado vectorial (Cairo) y compresión PNG sin pérdida a nivel máximo (Pillow `optimize=True, compress_level=9`).
+  - Reducción drástica del peso total de assets de ~900 KB a ~150 KB (reducción de más del 80% en almacenamiento para el bundle de instalación).
+- **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅ (todos los assets resueltos sin warnings), `bunx expo export --platform web` ✅ (exportación exitosa incluyendo favicon e icono).
+
+
