@@ -38,6 +38,13 @@
       "expo-sqlite",
       "expo-status-bar",
       [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false,
+          "hidden": true
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "GymFor accede a tu galería para asociar imágenes personalizadas a los ejercicios de tus rutinas.",

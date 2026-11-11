@@ -399,3 +399,21 @@ Docs: https://docs.expo.dev/eas/index.md
   - Reemplazo del `Input` manual de texto por `CampoFechaNacimiento`, manteniendo la validación reactiva de `validarFormularioPerfil` y la persistencia en formato `AAAA-MM-DD`.
 - **Tests (`__tests__/perfil.test.ts`)**:
   - +5 pruebas unitarias para `obtenerDiasDelMes`, `obtenerPrimerDiaSemana`, `construirFechaISO`, `desglosarFechaISO` y `formatearFechaLegible`. Suite completa en verde.
+
+### 2026-11-11 — feat/pantalla-completa-inmersiva
+
+- **Configuración de Android Navigation Bar (`app.json`)**:
+  - Añadido el plugin `expo-navigation-bar` con opciones `{ enforceContrast: false, hidden: true }` para configurar los atributos nativos de ventana en prebuild y builds de EAS/Android.
+- **Hook y utilidades de modo inmersivo (`src/hooks/useModoInmersivoAndroid.ts`)**:
+  - `aplicarModoInmersivoAndroid({ activo, estilo })`: invoca `NavigationBar.setHidden(activo)` y `NavigationBar.setStyle(estilo)` de forma imperativa, acotado estrictamente a `Platform.OS === 'android'` (no-op en iOS y Web).
+  - `useModoInmersivoAndroid({ activo, estilo })`: hook reactivo que aplica la configuración al montar y suscribe a eventos `AppState.addEventListener('change')` para re-ocultar la barra automáticamente cuando la app regresa de segundo plano (`nextAppState === 'active'`).
+  - Cumple con `sticky-immersive` / `overlay-swipe`: los botones de navegación del sistema (Atrás, Inicio, Recientes) se ocultan automáticamente y solo se revelan mediante deslizamiento temporal sin desplazar el contenido del entrenamiento ni romper los gestos de navegación.
+- **Integración global en Layout raíz (`app/_layout.tsx`)**:
+  - Montaje de `<NavigationBar hidden={true} style={temaResuelto === 'dark' ? 'light' : 'dark'} />` (declarativo) y ejecución de `useModoInmersivoAndroid(...)` respetando el tema claro/oscuro activo de Tamagui.
+- **Mocks e infra de tests (`jest-setup.ts`, `__tests__/modoInmersivo.test.ts`)**:
+  - Mock de `expo-navigation-bar` en `jest-setup.ts` para ejecución en entorno Jest / Node.
+  - Nueva suite unitaria `__tests__/modoInmersivo.test.ts` (5 tests) que valida: invocación de `setHidden`/`setStyle` en Android con defaults y parámetros personalizados, no-op en iOS/Web, y el hook real (`renderHook`) re-aplicando ante `AppState` → `'active'`, liberando la suscripción al desmontar y sin suscribirse fuera de Android.
+- **Safe area**: sin cambios de layout. Las pantallas no tienen footers con posición absoluta ni paddings fijos de barra; los botones inferiores van en flujo flex sobre la tab bar, que ya aplica los insets. En modo `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` la barra revelada se superpone sin cambiar los insets, así que el contenido no se desplaza. `predictiveBackGestureEnabled` queda intacto.
+- **Pendiente**: probar en dispositivo/emulador Android con barra de 3 botones (requiere development build: `expo-navigation-bar` es nativo y no basta Expo Go).
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅ (plugin `expo-navigation-bar` presente).
+
