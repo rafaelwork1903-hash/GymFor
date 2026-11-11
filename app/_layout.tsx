@@ -1,12 +1,14 @@
+import { NavigationBar } from 'expo-navigation-bar'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
-import { useColorScheme } from 'react-native'
+import { Platform, useColorScheme } from 'react-native'
 import { TamaguiProvider } from 'tamagui'
 
 import { ErrorBoundary } from '../src/components/ui/ErrorBoundary'
 import { ProveedorBaseDatos } from '../src/db/provider'
+import { useModoInmersivoAndroid } from '../src/hooks/useModoInmersivoAndroid'
 import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
 
@@ -50,6 +52,13 @@ export default function RootLayout() {
         ? 'light'
         : (colorScheme ?? 'light')
 
+  // Mantiene la barra de navegación del sistema oculta en Android (modo inmersivo)
+  // permitiendo que el contenido aproveche toda la pantalla y evitando toques accidentales.
+  useModoInmersivoAndroid({
+    activo: true,
+    estilo: temaResuelto === 'dark' ? 'light' : 'dark',
+  })
+
   const [fontsLoaded, fontError] = useFonts({
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
     InterBold: require('@tamagui/font-inter/otf/Inter-Bold.otf'),
@@ -86,6 +95,12 @@ export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={temaResuelto}>
       <StatusBar style={temaResuelto === 'dark' ? 'light' : 'dark'} />
+      {Platform.OS === 'android' ? (
+        <NavigationBar
+          hidden={true}
+          style={temaResuelto === 'dark' ? 'light' : 'dark'}
+        />
+      ) : null}
       {/* ProveedorBaseDatos lanza durante el render si la inicialización del
           motor activo rechaza; el boundary lo convierte en pantalla de error
           con reintento. */}

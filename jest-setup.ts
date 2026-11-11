@@ -16,3 +16,22 @@ const localStorageMock = {
 };
 
 globalThis.localStorage = localStorageMock as any;
+
+const mockSetHidden = jest.fn();
+const mockSetStyle = jest.fn();
+const mockNavigationBar = Object.assign(
+  jest.fn(() => null),
+  {
+    setHidden: mockSetHidden,
+    setStyle: mockSetStyle,
+  }
+);
+
+jest.mock('expo-navigation-bar', () => ({
+  NavigationBar: mockNavigationBar,
+  setStyle: mockSetStyle,
+  setVisibilityAsync: jest.fn().mockResolvedValue(undefined),
+  getVisibilityAsync: jest.fn().mockResolvedValue('hidden'),
+  addVisibilityListener: jest.fn(() => ({ remove: jest.fn() })),
+  useVisibility: jest.fn(() => 'hidden'),
+}));
