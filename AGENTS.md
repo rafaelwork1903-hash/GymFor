@@ -419,21 +419,17 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ### 2026-11-11 — feat/brand-icon-splash
 
-- **Identidad de marca y diseño de iconos (`assets/`)**:
-  - Reemplazo integral de assets provisionales y figuras geométricas por el arte y monograma definitivo de GymFor: 'G' atlética integrada con barra y discos olímpicos en degradado cian/azul eléctrico (`#38BDF8` a `#2563EB`) sobre fondo pizarra oscura (`#0F172A`).
-  - `icon.png`: 1024×1024 px cuadrado, modo RGB sin canal alfa (requerido para iOS App Store y Expo).
-  - `adaptive-icon.png`: 1024×1024 px modo RGB idéntico para compatibilidad Android legacy.
-  - `android-icon-foreground.png`: 1024×1024 px RGBA con canal alfa, con el emblema (diámetro ~560 px) contenido holgadamente dentro de la zona segura central de 66% (diámetro 682 px) según directrices de Material Design.
-  - `android-icon-background.png`: 1024×1024 px modo RGB con color sólido `#0F172A` alineado con `adaptiveIcon.backgroundColor`.
-  - `android-icon-monochrome.png`: 1024×1024 px RGBA, silueta plana blanca sobre fondo transparente para iconos con tema dinámico (Themed Icons) en Android 13+.
-  - `splash-icon.png`: 1024×1024 px RGBA, emblema GymFor y tipografía `G Y M F O R` con espaciado tracking centrado para la pantalla de inicio.
-  - `favicon.png`: 48×48 px modo RGB con renderizado nítido optimizado para navegación web.
-- **Configuración en `app.json`**:
-  - Añadido el bloque oficial `"splash"`: `{ "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#0F172A" }`.
-  - Sincronizado `android.adaptiveIcon.backgroundColor: "#0F172A"`.
-- **Optimización y reducción de peso**:
-  - Script determinista `scripts/generate_brand_assets.py` con renderizado vectorial (Cairo) y compresión PNG sin pérdida a nivel máximo (Pillow `optimize=True, compress_level=9`).
-  - Reducción drástica del peso total de assets de ~900 KB a ~150 KB (reducción de más del 80% en almacenamiento para el bundle de instalación).
-- **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅ (todos los assets resueltos sin warnings), `bunx expo export --platform web` ✅ (exportación exitosa incluyendo favicon e icono).
+- **Iconos (`assets/`)**: se sustituyen los placeholders por un emblema generado por código: una «G» en degradado cian→azul (`#38BDF8` → `#2563EB`) sobre `#0F172A`, cuyo travesaño termina en un disco de pesas. Formas grandes, sin detalles finos, para que se lea a 48 px. **Es una propuesta del agente, no arte oficial de un diseñador**: si llega un logo definitivo, basta con reemplazar los PNG o ajustar el script.
+  - `icon.png` y `adaptive-icon.png`: 1024×1024 RGB sin alfa.
+  - `android-icon-foreground.png`: 1024×1024 RGBA; emblema de 540 px de diámetro, dentro de la zona segura del 66% (682 px).
+  - `android-icon-background.png`: 1024×1024 RGB sólido `#0F172A` (igual que `adaptiveIcon.backgroundColor`).
+  - `android-icon-monochrome.png`: 1024×1024 RGBA, silueta blanca plana (Themed Icons, Android 13+).
+  - `splash-icon.png`: 1024×1024 RGBA, solo el emblema y sin texto. Android 12+ recorta el icono de la splash en un círculo, así que el emblema queda dentro del 66% central.
+  - `favicon.png`: 48×48 reducido desde `icon.png` (Lanczos).
+- **Splash (`app.json`)**: en SDK 58 la clave `splash` en la raíz ya no existe en `ExpoConfig` (solo queda `web.splash`, para PWA) y se ignora en nativo. Se instala `expo-splash-screen` (`~58.0.14`, lo instaló el usuario con `bunx expo install`) y se configura como plugin: `image`, `imageWidth: 200`, `resizeMode: "contain"`, `backgroundColor: "#0F172A"` y una variante `dark` igual. `adaptiveIcon.backgroundColor` pasa de `#E6F4FE` a `#0F172A`.
+- **Script reproducible**: `scripts/generate_brand_assets.py` (pycairo + Pillow) dibuja el emblema en vectorial y guarda los PNG con compresión sin pérdida (`optimize=True`, `compress_level=9`).
+- **Peso**: los PNG fuente bajan de unos 905 KB a unos 136 KB. Ojo: Expo genera los mipmaps nativos a partir de estos archivos, así que **el tamaño del APK instalado casi no cambia**. Esto no resuelve el problema de almacenamiento de la app.
+- **Pendiente**: ver el icono y la splash en un dispositivo real (necesita un build nuevo; Expo Go no usa estos assets).
+- Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type prebuild` ✅ (el plugin `expo-splash-screen` resuelve y aparece en `pluginHistory`), `bunx expo export --platform web` ✅.
 
 
