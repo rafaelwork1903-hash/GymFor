@@ -446,5 +446,16 @@ Docs: https://docs.expo.dev/eas/index.md
   - Añadido mock de `expo-splash-screen` (`preventAutoHideAsync`, `hideAsync`, `hide`, `setOptions`) para mantener limpia la ejecución de Jest en Node.
 - **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo export --platform web` ✅.
 
+### 2026-11-12 — fix/startup-splash-unblock
+
+- **Causa raíz del congelamiento en release compilado (Android APK)**:
+  - Al invocarse `SplashScreen.preventAutoHideAsync()` a nivel de módulo, Android activa la bandera nativa `SplashScreenManager.preventAutoHideCalled = true`. En ese estado, el listener nativo `CONTENT_APPEARED` de Android y el auto-hide de Expo Router quedan permanentemente deshabilitados, dependiendo exclusivamente de una llamada manual desde JavaScript a `SplashScreen.hide()`.
+  - La condición `if (!fuentesResueltas) return null` impedía que React Native montara vistas en la jerarquía nativa. Sin cambios ni solicitudes de render en el árbol nativo de Android, `onPreDrawListener` continuaba bloqueando el dibujo indefinidamente (`keepSplashScreenOnScreen = true`).
+- **Desbloqueo definitivo de inicio en `app/_layout.tsx`**:
+  - Eliminado `SplashScreen.preventAutoHideAsync()` del ámbito de módulo: restaura el comportamiento nativo de Android donde `CONTENT_APPEARED` y `ExpoRoot` descartan el splash screen de manera fluida y automática tan pronto el primer fotograma está listo.
+  - Eliminado el bloqueo condicional `return null`: la aplicación monta de inmediato `<TamaguiProvider>`, `<ProveedorBaseDatos>` y `<Stack>` con fuentes del sistema, aplicando `Inter` de forma asíncrona tan pronto se decodifica sin riesgo de parpadeos ni bloqueos.
+  - `SplashScreen.hideAsync().catch(() => {})` se ejecuta en `useEffect` como salvaguarda en segundo término, garantizando que el splash screen desaparezca tanto por vía nativa como por JavaScript.
+- **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅.
+
 
 
