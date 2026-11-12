@@ -35,3 +35,10 @@ jest.mock('expo-navigation-bar', () => ({
   addVisibilityListener: jest.fn(() => ({ remove: jest.fn() })),
   useVisibility: jest.fn(() => 'hidden'),
 }));
+
+jest.mock('expo-splash-screen', () => ({
+  preventAutoHideAsync: jest.fn().mockResolvedValue(true),
+  hideAsync: jest.fn().mockResolvedValue(true),
+  hide: jest.fn(),
+  setOptions: jest.fn(),
+}));

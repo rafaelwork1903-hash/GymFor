@@ -432,4 +432,18 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Pendiente**: ver el icono y la splash en un dispositivo real (necesita un build nuevo; Expo Go no usa estos assets).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type prebuild` ✅ (el plugin `expo-splash-screen` resuelve y aparece en `pluginHistory`), `bunx expo export --platform web` ✅.
 
+### 2026-11-12 — fix/splash-freeze-optimizations
+
+- **Descongelamiento de inicio (Splash Screen) en `app/_layout.tsx`**:
+  - Implementado el ciclo de vida oficial de `expo-splash-screen`: `SplashScreen.preventAutoHideAsync()` en ámbito de módulo para evitar que el splash desaparezca antes de tiempo.
+  - Añadido efecto que invoca `SplashScreen.hideAsync()` en cuanto las fuentes se resuelven (`fuentesResueltas === true`), desbloqueando la transición nativa hacia la UI.
+  - Añadido temporizador de seguridad failsafe (`TIMEOUT_FUENTES_MS = 1500`, reducido desde 3000 ms) para forzar la ocultación del splash y el renderizado con fuentes del sistema si un dispositivo de gama media o baja se demora en el inicio, garantizando que la app nunca se quede congelada.
+- **Eliminación total de imágenes rasterizadas compiladas**:
+  - Eliminados los 5 PNGs de ejercicios generados (`curl_biceps_mancuernas.png`, `elevaciones_laterales.png`, `mountain_climbers.png`, `russian_twists.png`, `sentadilla_bulgara.png`) de `assets/ejercicios/`.
+  - Actualizado `src/domain/media.ts` para que use exclusivamente ilustraciones vectoriales SVG (`PlaceholderSvg`) con `tipo: 'svg'`, dejando la app 100% libre de imágenes rasterizadas locales y lista para enlaces remotos WebP.
+- **Mock de testing (`jest-setup.ts`)**:
+  - Añadido mock de `expo-splash-screen` (`preventAutoHideAsync`, `hideAsync`, `hide`, `setOptions`) para mantener limpia la ejecución de Jest en Node.
+- **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type public` ✅.
+
+
 

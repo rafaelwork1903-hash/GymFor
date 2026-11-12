@@ -1,6 +1,7 @@
 import { NavigationBar } from 'expo-navigation-bar'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { Platform, useColorScheme } from 'react-native'
@@ -12,8 +13,13 @@ import { useModoInmersivoAndroid } from '../src/hooks/useModoInmersivoAndroid'
 import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
 
-/** Espera máxima de las fuentes antes de renderizar con las del sistema. */
-const TIMEOUT_FUENTES_MS = 3000
+// Evita que la pantalla de inicio nativa se oculte automáticamente antes de resolver fuentes
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // No-op en entornos donde ya fue llamada o no está soportada
+})
+
+/** Espera máxima de las fuentes antes de renderizar con las del sistema (failsafe para dispositivos gama media/baja). */
+const TIMEOUT_FUENTES_MS = 1500
 
 /**
  * Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
@@ -88,6 +94,27 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError])
 
   const fuentesResueltas = fontsLoaded || fontError != null || timeoutFuentes
+
+  // Ocultar la pantalla de inicio nativa tan pronto las fuentes estén resueltas
+  useEffect(() => {
+    if (fuentesResueltas) {
+      SplashScreen.hideAsync().catch(() => {
+        // No-op si ya se ocultó
+      })
+    }
+  }, [fuentesResueltas])
+
+  // Temporizador de seguridad (failsafe): nunca dejar la pantalla de inicio congelada
+  // más de TIMEOUT_FUENTES_MS aunque un dispositivo de gama media/baja tarde en renderizar.
+  useEffect(() => {
+    const temporizadorSeguridad = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {
+        // No-op si ya se ocultó
+      })
+    }, TIMEOUT_FUENTES_MS)
+    return () => clearTimeout(temporizadorSeguridad)
+  }, [])
+
   if (!fuentesResueltas) {
     return null
   }
