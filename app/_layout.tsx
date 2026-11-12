@@ -2,7 +2,7 @@ import { NavigationBar } from 'expo-navigation-bar'
 import { useFonts } from 'expo-font'
 import { SplashScreen, Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Platform, useColorScheme } from 'react-native'
 import { TamaguiProvider } from 'tamagui'
 
@@ -11,16 +11,6 @@ import { ProveedorBaseDatos } from '../src/db/provider'
 import { useModoInmersivoAndroid } from '../src/hooks/useModoInmersivoAndroid'
 import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
-
-// Evita que la pantalla de inicio nativa se oculte automáticamente antes de resolver fuentes (solo en móvil)
-if (Platform.OS !== 'web') {
-  SplashScreen.preventAutoHideAsync().catch(() => {
-    // No-op en entornos donde ya fue llamada o no está soportada
-  })
-}
-
-/** Espera máxima de las fuentes antes de renderizar con las del sistema (failsafe para dispositivos gama media/baja). */
-const TIMEOUT_FUENTES_MS = 1500
 
 /**
  * Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
@@ -70,61 +60,24 @@ export default function RootLayout() {
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
     InterBold: require('@tamagui/font-inter/otf/Inter-Bold.otf'),
   })
-  const [timeoutFuentes, setTimeoutFuentes] = useState(false)
 
-  // Las fuentes nunca deben bloquear la app: si fallan o tardan más de
-  // TIMEOUT_FUENTES_MS, renderizamos con las fuentes del sistema.
+  // Desbloqueo y ocultación segura de la pantalla de inicio nativa.
+  // Al no bloquear con `return null` ni forzar `preventAutoHideAsync`, la app monta
+  // inmediatamente su jerarquía de vistas y tanto Android (CONTENT_APPEARED) como
+  // Expo Router y este efecto descartan el splash screen sin riesgo de congelamiento.
   useEffect(() => {
     if (fontError) {
       console.error(
-        '[RootLayout] Error cargando las fuentes; se usarán las del sistema:',
+        '[RootLayout] Error cargando fuentes; se continuará con fuentes del sistema:',
         fontError,
       )
-      return
     }
-    if (fontsLoaded) {
-      return
+    if (Platform.OS !== 'web') {
+      SplashScreen.hideAsync().catch(() => {
+        // No-op si ya se ocultó
+      })
     }
-    const temporizador = setTimeout(() => {
-      console.warn(
-        `[RootLayout] Las fuentes no cargaron en ${TIMEOUT_FUENTES_MS} ms; se continúa con las del sistema.`,
-      )
-      setTimeoutFuentes(true)
-    }, TIMEOUT_FUENTES_MS)
-    return () => clearTimeout(temporizador)
   }, [fontsLoaded, fontError])
-
-  const fuentesResueltas = fontsLoaded || fontError != null || timeoutFuentes
-
-  // Ocultar la pantalla de inicio nativa tan pronto las fuentes estén resueltas (solo en móvil)
-  useEffect(() => {
-    if (fuentesResueltas && Platform.OS !== 'web') {
-      SplashScreen.hideAsync().catch(() => {
-        // No-op si ya se ocultó
-      })
-    }
-  }, [fuentesResueltas])
-
-  // Temporizador de seguridad (failsafe): nunca dejar la pantalla de inicio congelada
-  // más de TIMEOUT_FUENTES_MS aunque un dispositivo de gama media/baja tarde en renderizar.
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      return
-    }
-    const temporizadorSeguridad = setTimeout(() => {
-      setTimeoutFuentes(true)
-      SplashScreen.hideAsync().catch(() => {
-        // No-op si ya se ocultó
-      })
-    }, TIMEOUT_FUENTES_MS)
-    return () => clearTimeout(temporizadorSeguridad)
-  }, [])
-
-  // En web nunca bloqueamos el render con null para evitar pantallas blancas;
-  // en móvil nativo esperamos las fuentes o el timeout para evitar parpadeos visuales.
-  if (!fuentesResueltas && Platform.OS !== 'web') {
-    return null
-  }
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme={temaResuelto}>
