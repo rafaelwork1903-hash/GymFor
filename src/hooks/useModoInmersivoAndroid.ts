@@ -27,8 +27,12 @@ export function aplicarModoInmersivoAndroid({
   }
 
   try {
-    NavigationBar.setHidden(activo)
-    NavigationBar.setStyle(estilo)
+    if (typeof NavigationBar?.setHidden === 'function') {
+      NavigationBar.setHidden(activo)
+    }
+    if (typeof NavigationBar?.setStyle === 'function') {
+      NavigationBar.setStyle(estilo)
+    }
   } catch (error) {
     // Si la plataforma no soporta alguna de las llamadas nativas, evitamos romper el render
     console.warn('[ModoInmersivoAndroid] No se pudo actualizar NavigationBar:', error)
