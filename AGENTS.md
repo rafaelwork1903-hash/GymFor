@@ -432,4 +432,19 @@ Docs: https://docs.expo.dev/eas/index.md
 - **Pendiente**: ver el icono y la splash en un dispositivo real (necesita un build nuevo; Expo Go no usa estos assets).
 - Verificado: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo config --type prebuild` ✅ (el plugin `expo-splash-screen` resuelve y aparece en `pluginHistory`), `bunx expo export --platform web` ✅.
 
+### 2026-11-12 — fix/splash-freeze-optimizations
+
+- **Descongelamiento de inicio y corrección multiplataforma en `app/_layout.tsx`**:
+  - Migrado `SplashScreen` al export oficial de `expo-router` (`import { SplashScreen, Stack } from 'expo-router'`) para respetar el ciclo de navegación y de hidratación del router.
+  - Salvaguardas específicas por plataforma (`Platform.OS !== 'web'`): en web nunca se previene el auto-hide ni se bloquea con `return null`, renderizando de inmediato con fuentes del sistema y eliminando cualquier pantalla en blanco.
+  - Temporizador de seguridad móvil reforzado: tras `TIMEOUT_FUENTES_MS` (1500 ms), activa `setTimeoutFuentes(true)` y ejecuta `SplashScreen.hideAsync()`, evitando que un retraso en la carga de fuentes deje la pantalla colgada en `return null`.
+  - Blindaje defensivo en `src/hooks/useModoInmersivoAndroid.ts`: verificación de existencia de métodos `NavigationBar?.setHidden` y `setStyle` antes de invocarlos.
+- **Eliminación total de imágenes rasterizadas compiladas**:
+  - Eliminados los 5 PNGs de ejercicios generados (`curl_biceps_mancuernas.png`, `elevaciones_laterales.png`, `mountain_climbers.png`, `russian_twists.png`, `sentadilla_bulgara.png`) de `assets/ejercicios/`.
+  - Actualizado `src/domain/media.ts` para que use exclusivamente ilustraciones vectoriales SVG (`PlaceholderSvg`) con `tipo: 'svg'`, dejando la app 100% libre de imágenes rasterizadas locales y lista para enlaces remotos WebP.
+- **Mock de testing (`jest-setup.ts`)**:
+  - Añadido mock de `expo-splash-screen` (`preventAutoHideAsync`, `hideAsync`, `hide`, `setOptions`) para mantener limpia la ejecución de Jest en Node.
+- **Verificado**: `bunx tsc --noEmit` ✅, `bunx expo lint` 0 errores ✅ (9 warnings preexistentes), `bun run test` 21/21 suites y 220/220 tests ✅, `bunx expo export --platform web` ✅.
+
+
 

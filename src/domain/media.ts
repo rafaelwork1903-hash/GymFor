@@ -22,13 +22,6 @@ import PressBancaMancuernasSvg from '../../assets/ejercicios/press_banca_mancuer
 import RemoMancuernaUnaManoSvg from '../../assets/ejercicios/remo_mancuerna_una_mano.svg'
 import SentadillaBarraSvg from '../../assets/ejercicios/sentadilla_barra.svg'
 
-// Assets locales rasterizados (PNG)
-const CurlBicepsMancuernasPng: ImageSourcePropType = require('../../assets/ejercicios/curl_biceps_mancuernas.png')
-const ElevacionesLateralesPng: ImageSourcePropType = require('../../assets/ejercicios/elevaciones_laterales.png')
-const MountainClimbersPng: ImageSourcePropType = require('../../assets/ejercicios/mountain_climbers.png')
-const RussianTwistsPng: ImageSourcePropType = require('../../assets/ejercicios/russian_twists.png')
-const SentadillaBulgaraPng: ImageSourcePropType = require('../../assets/ejercicios/sentadilla_bulgara.png')
-
 export type TipoMedia = 'foto' | 'svg' | 'url'
 
 export interface MediaEjercicio {
@@ -141,46 +134,46 @@ export const REGISTRO_MEDIA_EJERCICIOS: Record<string, MediaEjercicio> = {
     accessibilityLabel: 'Ilustración demostrativa de movimiento metabólico completo de burpees',
   },
 
-  // Fotos / PNGs locales
+  // Ilustraciones vectoriales locales (SVG)
   'ej:curl_biceps_mancuernas': {
     id: 'media:curl_biceps_mancuernas',
     ejercicioId: 'ej:curl_biceps_mancuernas',
-    tipo: 'foto',
-    recurso: CurlBicepsMancuernasPng,
-    alt: 'Imagen demostrativa de Curl de bíceps con mancuernas',
-    accessibilityLabel: 'Foto demostrativa de flexión de codo con mancuernas de pie',
+    tipo: 'svg',
+    recurso: PlaceholderSvg,
+    alt: 'Ilustración demostrativa de Curl de bíceps con mancuernas',
+    accessibilityLabel: 'Ilustración de flexión de codo con mancuernas de pie',
   },
   'ej:elevaciones_laterales': {
     id: 'media:elevaciones_laterales',
     ejercicioId: 'ej:elevaciones_laterales',
-    tipo: 'foto',
-    recurso: ElevacionesLateralesPng,
-    alt: 'Imagen demostrativa de Elevaciones laterales',
-    accessibilityLabel: 'Foto demostrativa de abducción de hombros con mancuernas',
+    tipo: 'svg',
+    recurso: PlaceholderSvg,
+    alt: 'Ilustración demostrativa de Elevaciones laterales',
+    accessibilityLabel: 'Ilustración de abducción de hombros con mancuernas',
   },
   'ej:sentadilla_bulgara': {
     id: 'media:sentadilla_bulgara',
     ejercicioId: 'ej:sentadilla_bulgara',
-    tipo: 'foto',
-    recurso: SentadillaBulgaraPng,
-    alt: 'Imagen demostrativa de Sentadilla búlgara',
-    accessibilityLabel: 'Foto demostrativa de sentadilla unilateral con pie trasero apoyado en banco',
+    tipo: 'svg',
+    recurso: PlaceholderSvg,
+    alt: 'Ilustración demostrativa de Sentadilla búlgara',
+    accessibilityLabel: 'Ilustración de sentadilla unilateral con pie trasero apoyado en banco',
   },
   'ej:mountain_climbers': {
     id: 'media:mountain_climbers',
     ejercicioId: 'ej:mountain_climbers',
-    tipo: 'foto',
-    recurso: MountainClimbersPng,
-    alt: 'Imagen demostrativa de Escaladores (Mountain Climbers)',
-    accessibilityLabel: 'Foto demostrativa de escaladores en posición de plancha alta',
+    tipo: 'svg',
+    recurso: PlaceholderSvg,
+    alt: 'Ilustración demostrativa de Escaladores (Mountain Climbers)',
+    accessibilityLabel: 'Ilustración de escaladores en posición de plancha alta',
   },
   'ej:russian_twists': {
     id: 'media:russian_twists',
     ejercicioId: 'ej:russian_twists',
-    tipo: 'foto',
-    recurso: RussianTwistsPng,
-    alt: 'Imagen demostrativa de Russian Twists',
-    accessibilityLabel: 'Foto demostrativa de giros rusos para el core sentado en suelo',
+    tipo: 'svg',
+    recurso: PlaceholderSvg,
+    alt: 'Ilustración demostrativa de Russian Twists',
+    accessibilityLabel: 'Ilustración de giros rusos para el core sentado en suelo',
   },
 
   // URLs remotas

@@ -1,6 +1,6 @@
 import { NavigationBar } from 'expo-navigation-bar'
 import { useFonts } from 'expo-font'
-import { Stack } from 'expo-router'
+import { SplashScreen, Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { Platform, useColorScheme } from 'react-native'
@@ -12,8 +12,15 @@ import { useModoInmersivoAndroid } from '../src/hooks/useModoInmersivoAndroid'
 import { useConfiguracionStore } from '../src/store/configuracion.store'
 import { tamaguiConfig } from '../tamagui.config'
 
-/** Espera máxima de las fuentes antes de renderizar con las del sistema. */
-const TIMEOUT_FUENTES_MS = 3000
+// Evita que la pantalla de inicio nativa se oculte automáticamente antes de resolver fuentes (solo en móvil)
+if (Platform.OS !== 'web') {
+  SplashScreen.preventAutoHideAsync().catch(() => {
+    // No-op en entornos donde ya fue llamada o no está soportada
+  })
+}
+
+/** Espera máxima de las fuentes antes de renderizar con las del sistema (failsafe para dispositivos gama media/baja). */
+const TIMEOUT_FUENTES_MS = 1500
 
 /**
  * Bootstrap de usuario: `sesiones.usuario_id` es NOT NULL con FK a
@@ -88,7 +95,34 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError])
 
   const fuentesResueltas = fontsLoaded || fontError != null || timeoutFuentes
-  if (!fuentesResueltas) {
+
+  // Ocultar la pantalla de inicio nativa tan pronto las fuentes estén resueltas (solo en móvil)
+  useEffect(() => {
+    if (fuentesResueltas && Platform.OS !== 'web') {
+      SplashScreen.hideAsync().catch(() => {
+        // No-op si ya se ocultó
+      })
+    }
+  }, [fuentesResueltas])
+
+  // Temporizador de seguridad (failsafe): nunca dejar la pantalla de inicio congelada
+  // más de TIMEOUT_FUENTES_MS aunque un dispositivo de gama media/baja tarde en renderizar.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return
+    }
+    const temporizadorSeguridad = setTimeout(() => {
+      setTimeoutFuentes(true)
+      SplashScreen.hideAsync().catch(() => {
+        // No-op si ya se ocultó
+      })
+    }, TIMEOUT_FUENTES_MS)
+    return () => clearTimeout(temporizadorSeguridad)
+  }, [])
+
+  // En web nunca bloqueamos el render con null para evitar pantallas blancas;
+  // en móvil nativo esperamos las fuentes o el timeout para evitar parpadeos visuales.
+  if (!fuentesResueltas && Platform.OS !== 'web') {
     return null
   }
 
